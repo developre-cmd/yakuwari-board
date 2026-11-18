@@ -812,6 +812,9 @@
       <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px">対象月<input type="month" id="kotMonth" style="font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)"></label>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700"><input type="checkbox" id="kotHead" checked style="width:16px;height:16px;accent-color:var(--accent)">見出し行を付ける</label>
     </div>
+    <div style="margin-bottom:10px"><div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:4px">書き出す部署（チェックした部署だけを、CSVに書き出します）</div>
+      <div id="kotDeptList" style="display:flex;flex-wrap:wrap;gap:6px 16px"></div>
+      <div style="margin-top:6px;display:flex;gap:8px"><button class="btn sm" id="kotAll" type="button">実際の部署すべて</button><button class="btn sm" id="kotNone" type="button">すべて外す</button></div></div>
     <div style="overflow-x:auto"><table id="kotTable" style="border-collapse:collapse;font-size:13px;width:100%"></table></div>
     <div id="kotNotes" style="font-size:12.5px;margin-top:10px"></div>
     <p style="font-size:12px;color:var(--ink-soft);margin-top:10px">各部署が「予定として確定」した内容を書き出します（確定していない部署は出ません）。公休・有休・希望休の日は行になりません。半日の休みは、勤務する側の時間だけを書き出します。</p>
@@ -836,7 +839,7 @@
     <div class="edit-list" id="passList"></div>
     <div class="edit-row" style="margin-top:14px;flex-wrap:wrap">
       <input type="email" id="userEmail" placeholder="例：name@gmail.com" autocomplete="off" style="flex:1;min-width:180px">
-      <select id="userRole"><option value="admin">管理者</option><option value="day">デイサービス</option><option value="home">訪問介護</option><option value="office">本部・事務</option><option value="nursing">看護</option><option value="kitchen">栄養士・厨房</option><option value="rehab">リハビリ</option><option value="kyotaku">居宅支援事業所</option><option value="support">サポート</option></select>
+      <select id="userRole"><option value="admin">管理者</option><option value="day">デイサービス</option><option value="home">訪問介護</option><option value="office">本部・事務</option><option value="nursing">看護</option><option value="kitchen">栄養士・厨房</option><option value="rehab">リハビリ</option><option value="kyotaku">居宅支援事業所</option><option value="support">サポート</option><option value="test">テスト部署</option></select>
       <button class="btn" id="userAdd">追加</button>
     </div>
     <h4 style="margin:20px 0 8px;font-size:14px">パスコード（Googleログインのあとに入力）</h4>
@@ -1014,9 +1017,9 @@ const K={
   offtable:"yakuwari:offtable", // 年間休日の表（部署×1〜12月の公休日数）。管理者のみ設定
   theme:"yakuwari:theme" // 表示テーマも施設共通
 };
-const FACILITY_NAME={day:"デイサービス",home:"訪問介護",office:"本部・事務",nursing:"看護",kitchen:"栄養士・厨房",rehab:"リハビリ",kyotaku:"居宅支援事業所",support:"サポート"};
+const FACILITY_NAME={day:"デイサービス",home:"訪問介護",office:"本部・事務",nursing:"看護",kitchen:"栄養士・厨房",rehab:"リハビリ",kyotaku:"居宅支援事業所",support:"サポート",test:"テスト部署"};
 const BOARD_FACILITIES=["day","home"]; // 役割分担ボードを使う部署（それ以外は勤務表のみ）
-const ALL_FACILITIES=["day","home","office","nursing","kitchen","rehab","kyotaku","support"];
+const ALL_FACILITIES=["day","home","office","nursing","kitchen","rehab","kyotaku","support","test"]; // test＝テスト部署（動作確認用。KOT用CSVの書き出しでは、初期状態で対象に入れない）
 
 /* ---------- defaults ---------- */
 const STAFF_COLORS=["#3E7CB1","#C7803E","#5B9E7A","#8E6FB0","#C25E6E","#C9A227","#6E8FA6","#4C8C8C","#B2632F","#7C9A46"];
@@ -1149,19 +1152,19 @@ const SUMCOLS_HOME=[
 const SUMCOLS_OFFICE=[{label:"日",codes:["日","出"]},{label:"休",codes:["公","希"]},{label:"有",codes:["有"]}]; // 事務：早番・遅番・夜勤なし
 const SUMCOLS_DAY=[{label:"日",codes:["日","出","朝","夕","朝夕"]},{label:"休",codes:["公","希"]},{label:"有",codes:["有"]},{label:"応",codes:["応"]}]; // デイサービス：日勤（過去の「出」・半休・研修を含む）。早・遅・夜はなし
 const SUMCOLS_KITCHEN=[{label:"出",codes:["朝","朝日","早1","早2","日","遅1","遅2","日夜","夜","早","遅","出"]},{label:"休",codes:["公","希"]},{label:"有",codes:["有"]}]; // 栄養士・厨房：右の集計は、出勤日数・休み・有休だけ（勤務の種類は、日ごとに変わるため、種類別には数えない）
-const SUMCOLS_BY_DEPT={home:SUMCOLS_HOME,nursing:SUMCOLS_HOME,office:SUMCOLS_OFFICE,day:SUMCOLS_DAY,rehab:SUMCOLS_OFFICE,kitchen:SUMCOLS_KITCHEN,kyotaku:SUMCOLS_OFFICE,support:SUMCOLS_OFFICE};
+const SUMCOLS_BY_DEPT={home:SUMCOLS_HOME,nursing:SUMCOLS_HOME,office:SUMCOLS_OFFICE,day:SUMCOLS_DAY,rehab:SUMCOLS_OFFICE,kitchen:SUMCOLS_KITCHEN,kyotaku:SUMCOLS_OFFICE,support:SUMCOLS_OFFICE,test:SUMCOLS_OFFICE};
 // 合計の列は値を出さない（月の日数との照合・赤字表示は行わない）
-const SUMTOTAL_BOX={home:true,nursing:true,office:true,day:true,rehab:true,kitchen:true,kyotaku:true,support:true}; // 合計は表の外の別枠（右側）に出す
+const SUMTOTAL_BOX={home:true,nursing:true,office:true,day:true,rehab:true,kitchen:true,kyotaku:true,support:true,test:true}; // 合計は表の外の別枠（右側）に出す
 const sumColsOf=()=>SUMCOLS_BY_DEPT[FSCOPE]||null;
 // 勤務表の下に出す「日ごとの記号別スタッフ数」の行（指定した部署のみ）
-const SHIFTROWS_BY_DEPT={home:["早","日","遅","夜"],nursing:["早","日","遅","夜"],office:["日"],rehab:["日"],kitchen:["朝","朝日","早1","早2","日","遅1","遅2","日夜","夜"],kyotaku:["日"],support:["日"]};
+const SHIFTROWS_BY_DEPT={home:["早","日","遅","夜"],nursing:["早","日","遅","夜"],office:["日"],rehab:["日"],kitchen:["朝","朝日","早1","早2","日","遅1","遅2","日夜","夜"],kyotaku:["日"],support:["日"],test:["日"]};
 // 早番・日勤・遅番・夜勤の勤務時間（訪問介護・看護）。設定画面で変更できる
 const DEF_SHIFTTIMES={home:{"早":{s:"06:00",e:"15:00"},"日":{s:"08:30",e:"17:30"},"遅":{s:"13:00",e:"22:00"},"夜":{s:"21:00",e:"07:00"}}};
 DEF_SHIFTTIMES.nursing=JSON.parse(JSON.stringify(DEF_SHIFTTIMES.home)); // 看護は、早番6:00〜・遅番13:00〜（常勤）
 DEF_SHIFTTIMES.home["早"]={s:"07:00",e:"16:00"}; DEF_SHIFTTIMES.home["遅"]={s:"12:00",e:"21:00"}; // 訪問介護は、早番7:00〜16:00・遅番12:00〜21:00
 const SHIFT_NAMES={"早":"早番","日":"日勤","遅":"遅番","夜":"夜勤"};
 const shiftTimeLabel=c=>{const t=(S.shiftTimes||{})[c]; return t&&t.s&&t.e?`${t.s.replace(/^0/,"")}〜${t.e.replace(/^0/,"")}`:"";};
-const SHIFTROWS_MIN={office:true,rehab:true,kyotaku:true,support:true}; // この部署は記号別の行に「1日の最低出勤人数」の不足（赤）も出す
+const SHIFTROWS_MIN={office:true,rehab:true,kyotaku:true,support:true,test:true}; // この部署は記号別の行に「1日の最低出勤人数」の不足（赤）も出す
 // 送迎職員は「職種」ではなく、台帳の「送迎が可能」チェックで数える（兼任できる）。他の職種は職種の選択で数える
 // 職種：デイサービスだけ、複数選べる（例：生活相談員＋介護職員）。s.jobs＝選んだ職種すべて、s.job＝その中で並び順が先のもの（勤務表の並びに使う）
 const jobIdsOf=(s,fs)=>((fs||FSCOPE)==="day"&&Array.isArray(s.jobs)&&s.jobs.length)?s.jobs:(s.job?[s.job]:[]);
@@ -1197,7 +1200,8 @@ const DEF_STATUS_ENABLED={
   kitchen:["朝","朝日","早1","早2","日","遅1","遅2","日夜","夜","早","遅","公","有","希"],
   rehab:["日","公","有","希"],
   kyotaku:["日","公","有","希"],
-  support:["日","公","有","希"]
+  support:["日","公","有","希"],
+  test:["日","公","有","希"]
 };
 
 /* ---------- storage（端末内に保存しつつ、Google Cloud（Firebase）と同期） ---------- */
@@ -1224,7 +1228,7 @@ function setSyncStatus(state){ // "ok" | "busy" | "error" | "off"
   el.dataset.state=state;
   el.textContent = state==="busy"?"🔄 同期中…" : state==="error"?"⚠ 同期待ち（自動で再送します）" : state==="off"?"": "☁ 同期済み";
 }
-const keyScope=k=>{const m=/^yakuwari:(day|home|office|nursing|kitchen|rehab|kyotaku|support):/.exec(k);return m?m[1]:"global";};
+const keyScope=k=>{const m=/^yakuwari:(day|home|office|nursing|kitchen|rehab|kyotaku|support|test):/.exec(k);return m?m[1]:"global";};
 const syncable=k=>!!k&&k.indexOf("yakuwari:")===0&&k.indexOf("yakuwari:gate:")!==0&&k!==K.theme;
 const canWrite=k=>SYNC_SCOPES===null||keyScope(k)===SYNC_SCOPES||new RegExp("^yakuwari:assist:[0-9-]+:"+SYNC_SCOPES+"$").test(k); // 応援の記録は、所属の部署の人が書ける
 // 1件を裏で送信。失敗しても捨てず、成功するまで再試行し続ける（＝送信中のキーは pending として保持）。
@@ -2697,7 +2701,7 @@ $("#btnTplSave").onclick=openTplSave;$("#btnTplLoad").onclick=openTplLoad;
 $("#btnPrintBoard").onclick=$("#btnPrintRoster").onclick=()=>window.print();
 
 // ---- 管理者：全部署の勤務表をまとめて印刷（A3横・4枚） ----
-const PRINT_PAGES=[["day"],["kyotaku","office","kitchen"],["home"],["nursing","rehab","support"]];
+const PRINT_PAGES=[["day"],["kyotaku","office","kitchen"],["home"],["nursing","rehab","support"],["test"]];
 async function printAllDepartments(){
   const btn=$("#btnPrintAll"); const origLabel=btn.textContent;
   btn.disabled=true; btn.textContent="🖨 準備中…";
@@ -2794,7 +2798,7 @@ $("#btnTheme").onclick=$("#btnTheme2").onclick=toggleTheme;
 (()=>{const th=jget(K.theme,null);if(th)document.documentElement.setAttribute('data-theme',th);})();
 
 /* ================= ログイン（Googleアカウント。管理者が登録した人だけが入れる） ================= */
-const ROLE_LABEL={admin:"管理者",day:"デイサービス",home:"訪問介護",office:"本部・事務",nursing:"看護",kitchen:"栄養士・厨房",rehab:"リハビリ",kyotaku:"居宅支援事業所",support:"サポート"};
+const ROLE_LABEL={admin:"管理者",day:"デイサービス",home:"訪問介護",office:"本部・事務",nursing:"看護",kitchen:"栄養士・厨房",rehab:"リハビリ",kyotaku:"居宅支援事業所",support:"サポート",test:"テスト部署"};
 let ROLE=null, USER_EMAIL=null, entering=false;
 function sessGet(k){try{return sessionStorage.getItem(k);}catch(e){return null;}}
 function sessSet(k,v){try{sessionStorage.setItem(k,v);}catch(e){}}
@@ -2901,7 +2905,7 @@ async function initGate(){
   }catch(e){ gateMsg("接続できませんでした。ネットワークを確認して、ページを開き直してください。"); }
 }
 
-const FACILITY_ICON={day:"📋",home:"🚶",office:"🗂️",nursing:"🩺",kitchen:"🍳",rehab:"🦵",kyotaku:"🏠",support:"🤝"};
+const FACILITY_ICON={day:"📋",home:"🚶",office:"🗂️",nursing:"🩺",kitchen:"🍳",rehab:"🦵",kyotaku:"🏠",support:"🤝",test:"🧪"};
 function updateFacilityUI(){
   const isAdmin=ROLE==="admin";
   $("#facSwitch").hidden=!isAdmin;
@@ -3144,13 +3148,14 @@ function kotTimes(f,s,code,half,tm,shiftTimes){
   if(code==="日"||code==="出")return mk(kotRowOf((s.dayStart==="09:00"&&(f==="home"||f==="nursing"))?"日勤B":"日勤A",c=>c==="常勤") /* 日勤の開始時間を選べるのは、訪問介護と看護だけ。ほかの部署は8:30（日勤A） */);
   if(code==="早"||code==="遅"||code==="夜"){ const mt=(shiftTimes||{})[code]; return mk((code!=="夜"&&(f==="home"||f==="nursing")&&kotRowOf(code+(f==="home"?"介":"看"),c=>c==="常勤"))||kotRowOf(code,c=>c==="常勤"),mt&&mt.s&&mt.e?mt:null); } // 早番・遅番は、訪問介護が「早介・遅介」、看護が「早看・遅看」の行（なければ従来の「早・遅」）
   return {err:`記号「${code}」は、KOT用の時間が決まっていません`}; }
-function kotBuild(ym){
+function kotBuild(ym,sel){
   const [Y,M]=ym.split("-").map(Number), nd=new Date(Y,M,0).getDate(), rows=[], depts=[], codeCnt={};
-  ALL_FACILITIES.filter(f=>!KOT_EXCLUDE.includes(f)).forEach(f=>staffListOf(f).forEach(s=>{const c=(s.kotCode||"").trim(); if(c)codeCnt[c]=(codeCnt[c]||0)+1;}));
+  const on=f=>!sel||sel.has(f); // 書き出す部署（チェックした部署）
+  ALL_FACILITIES.filter(f=>!KOT_EXCLUDE.includes(f)&&on(f)).forEach(f=>staffListOf(f).forEach(s=>{const c=(s.kotCode||"").trim(); if(c)codeCnt[c]=(codeCnt[c]||0)+1;}));
   const dup=Object.keys(codeCnt).filter(c=>codeCnt[c]>1);
   ALL_FACILITIES.filter(f=>!KOT_EXCLUDE.includes(f)).forEach(f=>{
-    const info={f,name:FACILITY_NAME[f],plan:false,staff:0,lines:0,noCode:[],errs:[]}; depts.push(info);
-    const plan=jget(`yakuwari:${f}:plan:${ym}`,null); if(!plan||!plan.r)return; info.plan=true;
+    const info={f,name:FACILITY_NAME[f],on:on(f),plan:false,staff:0,lines:0,noCode:[],errs:[]}; depts.push(info);
+    const plan=jget(`yakuwari:${f}:plan:${ym}`,null); if(!plan||!plan.r)return; info.plan=true; if(!info.on)return;
     const types=normTypes(f===FSCOPE?S.types:jget(`yakuwari:${f}:types`,null)), shiftTimes=jget(`yakuwari:${f}:meta`,{}).shiftTimes||DEF_SHIFTTIMES[f]||{};
     TYPES_OVERRIDE=types; EXP_F=f;
     try{ staffListOf(f).forEach(s=>{
@@ -3166,15 +3171,21 @@ function kotBuild(ym){
   rows.sort((a,b)=>a.d-b.d||ALL_FACILITIES.indexOf(a.f)-ALL_FACILITIES.indexOf(b.f));
   return {rows:rows.map(x=>x.line),depts,dup}; }
 let kotCur=null;
-function renderKot(){ const ym=$("#kotMonth").value; if(!ym)return; kotCur=kotBuild(ym); const td="padding:6px 8px";
-  $("#kotTable").innerHTML=`<thead><tr style="text-align:left;color:var(--ink-soft);font-size:12px"><th style="${td}">部署</th><th style="${td}">予定</th><th style="${td}">スタッフ</th><th style="${td};text-align:right">書き出す行数</th><th style="${td}">確認</th></tr></thead><tbody>${kotCur.depts.map(d=>`<tr style="border-top:1px solid var(--line)"><td style="${td};white-space:nowrap">${FACILITY_ICON[d.f]} ${escapeHtml(d.name)}</td><td style="${td};white-space:nowrap">${d.plan?"確定済み":'<span style="color:#C62828;font-weight:700">未確定</span>'}</td><td style="${td}">${d.staff}名</td><td style="${td};text-align:right">${d.lines}</td><td style="${td};font-size:12px">${d.noCode.length?`<span style="color:#C62828;font-weight:700">コード未入力：</span>${escapeHtml(d.noCode.join("・"))}<br>`:""}${d.errs.slice(0,3).map(e=>escapeHtml(e)).join("<br>")}${d.errs.length>3?`<br>ほか${d.errs.length-3}件`:""}</td></tr>`).join("")}</tbody>`;
+const kotRealDepts=()=>ALL_FACILITIES.filter(f=>!KOT_EXCLUDE.includes(f)&&f!=="test");
+let kotSel=null; // 書き出す部署（最初は、実際の部署すべて。テスト部署は入れない）
+function renderKot(){ const ym=$("#kotMonth").value; if(!ym)return; if(!kotSel)kotSel=new Set(kotRealDepts());
+  const dl=$("#kotDeptList"); dl.innerHTML=""; ALL_FACILITIES.filter(f=>!KOT_EXCLUDE.includes(f)).forEach(f=>{ const lb=document.createElement('label'); lb.style.cssText="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;white-space:nowrap"; lb.innerHTML=`<input type="checkbox" ${kotSel.has(f)?"checked":""} style="width:16px;height:16px;accent-color:var(--accent)">${FACILITY_ICON[f]} ${escapeHtml(FACILITY_NAME[f])}`; lb.querySelector("input").onchange=e=>{ if(e.target.checked)kotSel.add(f); else kotSel.delete(f); renderKot(); }; dl.appendChild(lb); });
+  kotCur=kotBuild(ym,kotSel); const td="padding:6px 8px";
+  $("#kotTable").innerHTML=`<thead><tr style="text-align:left;color:var(--ink-soft);font-size:12px"><th style="${td}">部署</th><th style="${td}">予定</th><th style="${td}">スタッフ</th><th style="${td};text-align:right">書き出す行数</th><th style="${td}">確認</th></tr></thead><tbody>${kotCur.depts.map(d=>`<tr style="border-top:1px solid var(--line)${d.on?"":";opacity:.45"}"><td style="${td};white-space:nowrap">${FACILITY_ICON[d.f]} ${escapeHtml(d.name)}</td><td style="${td};white-space:nowrap">${d.plan?"確定済み":'<span style="color:#C62828;font-weight:700">未確定</span>'}</td><td style="${td}">${d.staff}名</td><td style="${td};text-align:right">${d.lines}</td><td style="${td};font-size:12px">${d.noCode.length?`<span style="color:#C62828;font-weight:700">コード未入力：</span>${escapeHtml(d.noCode.join("・"))}<br>`:""}${d.errs.slice(0,3).map(e=>escapeHtml(e)).join("<br>")}${d.errs.length>3?`<br>ほか${d.errs.length-3}件`:""}</td></tr>`).join("")}</tbody>`;
   $("#kotNotes").innerHTML=(kotCur.dup.length?`<div style="color:#C62828;font-weight:700">同じ従業員コードが、2人以上に入っています：${escapeHtml(kotCur.dup.join("・"))}（全スタッフ一覧で、確認してください）</div>`:"")+`<div>合計 <b>${kotCur.rows.length}行</b></div>`;
   $("#kotGo").disabled=!kotCur.rows.length; }
 $("#btnKotSide").onclick=()=>{ if(ROLE!=="admin")return; $("#kotMonth").value=S.ym; renderKot(); openModal("#kotOverlay"); };
 $("#kotMonth").onchange=renderKot;
+$("#kotAll").onclick=()=>{ kotSel=new Set(kotRealDepts()); renderKot(); };
+$("#kotNone").onclick=()=>{ kotSel=new Set(); renderKot(); };
 $("#kotGo").onclick=()=>{ if(!kotCur||!kotCur.rows.length)return; const q=v=>{v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
   const lines=($("#kotHead").checked?[["勤務日","従業員コード","勤務開始時刻","勤務終了時刻","休憩開始予定","休憩終了予定"]]:[]).concat(kotCur.rows);
-  const blob=new Blob(["﻿"+lines.map(l=>l.map(q).join(",")).join("\r\n")+"\r\n"],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`KOT取込用_${$("#kotMonth").value}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); };
+  const blob=new Blob(["﻿"+lines.map(l=>l.map(q).join(",")).join("\r\n")+"\r\n"],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); { const sl=[...(kotSel||[])], real=kotRealDepts(); const suffix=sl.length===1?"_"+FACILITY_NAME[sl[0]]:(sl.length===real.length&&real.every(f=>kotSel.has(f)))?"":"_選択部署"; a.download=`KOT取込用_${$("#kotMonth").value}${suffix}.csv`; } document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); };
 
 // ---- 管理者：データのバックアップと復元（全部署の保存データを1つのファイルに） ----
 const backupKeys=()=>{ const ks=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(syncable(k))ks.push(k); } return ks.sort(); };
