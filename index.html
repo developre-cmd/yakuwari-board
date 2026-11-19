@@ -2033,6 +2033,17 @@ function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>
 const isLockedStaff=s=>s.locked!==false; // 保存済み（登録済み）のスタッフは、「編集」を押すまで変更できない。新しく追加したスタッフは、保存するまで編集できる
 function renderStaffList(){
   const w=$("#staffList");w.innerHTML=""; if(sortStaffByJob())saveStaff();
+  if(FSCOPE==="test"&&ROLE==="admin"){ // テスト部署：KOT連携テスト用の架空の5名を、ボタン1つで入れる（同じ名前の人がいれば入れない）
+    const tb=document.createElement('div'); tb.style.cssText="margin-bottom:10px"; tb.innerHTML=`<button class="btn sm" type="button">🧪 テスト用の5名を入れる</button><span style="font-size:12px;color:var(--ink-soft);margin-left:8px">月給1名・契約1名・時給3名（架空の人物）</span>`;
+    tb.querySelector('button').onclick=()=>{ const T=n=>(S.types.find(t=>t.name===n)||{}).id; const all=[0,1,2,3,4,5,6];
+      const list=[{name:"テスト 月給A",typeId:T("月給"),kotCode:"T001"},
+        {name:"テスト 契約A",typeId:T("契約"),kotCode:"T002",workTime:{s:"08:30",e:"17:30"},breakLong:true,workDays:[2,3,4,5,6],offStrict:true},
+        {name:"テスト 時給A",typeId:T("時給"),kotCode:"T003",workTime:{s:"09:00",e:"15:00"},breakYes:false,workDays:[1,3,5]},
+        {name:"テスト 時給B",typeId:T("時給"),kotCode:"T004",workTime:{s:"08:30",e:"17:30"},breakLong:true,workDays:[1,2,4,5]},
+        {name:"テスト 時給C",typeId:T("時給"),kotCode:"T005",workTime:{s:"08:30",e:"17:30"},breakLong:true,workDays:[2,3,5,6]}];
+      let n=0; list.forEach((o,i)=>{ if(S.staff.some(x=>x.name===o.name))return; S.staff.push(Object.assign({id:uid(),color:STAFF_COLORS[(S.staff.length+i)%STAFF_COLORS.length],locked:true},o)); n++; });
+      if(!n){toast("テスト用の5名は、すでに入っています");return;} saveStaff(); renderStaffList(); refreshAll(); toast(`テスト用のスタッフを${n}名入れました`); };
+    w.appendChild(tb); }
   let lastGrp=null;
   S.staff.forEach((s,i)=>{
     if(groupedDept()){ const gk=jobKeyOf(s); if(gk!==lastGrp){ lastGrp=gk; const h=document.createElement('div'); h.className='mlabel'; h.style.marginTop=i?'14px':'0'; h.textContent=(jobGroups().find(x=>x.id===gk)||{}).name; w.appendChild(h); } }
@@ -2077,7 +2088,7 @@ function renderStaffList(){
       ${(!(FSCOPE==="kitchen"&&!kitIsHourly(s))&&partDurHours(s)!=null)?`<div class="line2"><div style="font-size:12px;color:var(--ink-soft)">勤務表に出る記号：<b>${partSymbolOf(s)?escapeHtml(partSymbolOf(s))+escapeHtml(symActualText(s)):"該当なし"}</b>${partNeedsBreakChoice(s)&&!partSymbolOf(s)?(partBreakKind(s)==="yn"?"（休憩あり・なしを選ぶと決まります）":"（45分・1時間を選ぶと決まります）"):""}</div>${partActualHours(s)!=null?`<div style="font-size:12px;color:var(--ink-soft);margin-top:2px">有休を取ったときの時間：<b>${fmtH(partActualHours(s))}時間</b>（実働時間で計算）${(()=>{ const pr=shiftTblLoad().find(r=>r.cat===PAIDLEAVE_CAT&&r.h!=null&&Math.abs(r.h-partActualHours(s))<1e-6); return pr?"　記号："+escapeHtml(pr.code):""; })()}</div>`:""}</div>`:""}`}
       <div class="line2">
         <div class="fl" style="flex:1"><span>勤務できる曜日</span>
-          <div class="seg wdseg">${DOW.map((w,i)=>`<button class="segbtn" data-wd="${i}" aria-pressed="${!s.workDays||s.workDays.includes(i)}">${w}</button>`).join("")}${holidaySetOn(s)?`<button class="segbtn" data-hol="1" title="祝日・祭日に出勤できる" aria-pressed="${holidayOkOf(s)}">祝</button>`:""}</div></div>
+          <div class="seg wdseg">${DOW.map((w,i)=>`<button class="segbtn" data-wd="${i}" aria-pressed="${!s.workDays||s.workDays.includes(i)}">${w}</button>`).join("")}${holidaySetOn(s)?`<button class="segbtn" data-hol="1" title="祝日・祭日に出勤できる" aria-pressed="${holidayOkOf(s)}">祝</button>`:""}</div>${typeName(s)==="契約"?`<label class="wk" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;margin-top:6px"><input type="checkbox" class="off-strict" ${s.offStrict?"checked":""} style="width:18px;height:18px;accent-color:var(--accent)">勤務できない曜日は、必ず休みにする</label>`:""}</div>
       </div>`:""}
       ${(FSCOPE==="day"&&(s.job==="drv"||s.hours))?`<div class="line2">
         <div class="fl" style="flex:1"><span>勤務時間帯（ドライバー）</span><div class="seg hseg">${hbtns}</div></div>
@@ -2125,6 +2136,7 @@ function renderStaffList(){
     card.querySelectorAll('.hrow').forEach(row=>{const band=row.dataset.band;
       row.querySelector('.hs').onchange=e=>{s.hours[band].s=e.target.value;saveStaff();if(S.tab==="board")renderBoard();};
       row.querySelector('.he').onchange=e=>{s.hours[band].e=e.target.value;saveStaff();if(S.tab==="board")renderBoard();};});
+    const ofs=card.querySelector('.off-strict'); if(ofs)ofs.onchange=e=>{s.offStrict=e.target.checked;saveStaff();}; // 契約：勤務できない曜日を必ず休みにする（公休の目標を超えても）
     card.querySelectorAll('.wdseg .segbtn').forEach(b=>b.onclick=()=>{ // 勤務できる曜日の切り替え（全曜日＝制限なし）
       if(b.dataset.hol){ s.holOk=!holidayOkOf(s); saveStaff(); renderStaffList(); if(S.tab==="roster")renderRoster(); return; } // 祝日・祭日に出勤できるか
       const wd=+b.dataset.wd; let cur=s.workDays?s.workDays.slice():[0,1,2,3,4,5,6];
@@ -2523,7 +2535,7 @@ $("#doAuto").onclick=()=>{
     for(let d=1;d<=nd;d++){ if(!rr[d]&&isSetOff(d)){rr[d]=rcode;setAuto(s.id,d,true);} }          // 事業所の休業日 → 公休
     const cand=[]; for(let d=1;d<=nd;d++){ if(!rr[d]&&!workDayOk(s,d))cand.push(d); }            // 非常勤の勤務できない曜日・祝日 → 公休
     const tg0=staffTarget(s); let use=cand;
-    if(tg0!=null&&typeName(s)==="契約"){ let o=0; for(let d=1;d<=nd;d++){const c=rr[d],st=c&&statusByCode(c); if(st&&!st.work&&!isPaidSt(st))o+=st.half?0.5:1;} use=spread(cand,Math.max(0,Math.floor(tg0-o+1e-9))); } // 契約は、公休が規定の日数を超えないよう、勤務できない日の一部を出勤にする
+    if(tg0!=null&&typeName(s)==="契約"&&!s.offStrict){ let o=0; for(let d=1;d<=nd;d++){const c=rr[d],st=c&&statusByCode(c); if(st&&!st.work&&!isPaidSt(st))o+=st.half?0.5:1;} use=spread(cand,Math.max(0,Math.floor(tg0-o+1e-9))); } // 契約は、公休が規定の日数を超えないよう、勤務できない日の一部を出勤にする
     use.forEach(d=>{rr[d]=rcode;setAuto(s.id,d,true);}); });
   const wOfCode=(c,s,d)=>{ if(c==="応")return 0; if(!c)return (s&&s.nightOnly)?0:1; const st=statusByCode(c); if(st&&!st.work&&!isWishStatus(st)&&s&&d&&(S.rhalf[s.id]||{})[d])return 0.5; return st?(st.half?0.5:(st.work?1:0)):1; }; // 空欄=出勤候補1・半日=0.5
   // 夜勤明け：夜勤の次の日は、休みにする（夜勤が続く場合は、最後の夜勤の次の日が休み）。夜勤明けの休みをなくす場合は false
