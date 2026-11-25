@@ -761,6 +761,7 @@
     <div class="mlabel">この日だけの勤務時間（通常：<span id="timeEditUsual"></span>）</div>
     <div id="timeEditSel" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap"></div>
     <div id="timeEditBrk" style="margin-top:12px"></div>
+    <div id="timeEditErr" role="alert" style="margin-top:12px;color:#C62828;font-weight:700;font-size:13px;line-height:1.5"></div>
   </div>
   <div class="modal-foot"><button class="btn" id="timeEditReset">通常に戻す</button><button class="btn primary" id="timeEditSave">決定</button></div>
 </div></div>
@@ -817,7 +818,7 @@
       <div style="margin-top:6px;display:flex;gap:8px"><button class="btn sm" id="kotAll" type="button">実際の部署すべて</button><button class="btn sm" id="kotNone" type="button">すべて外す</button></div></div>
     <div style="overflow-x:auto"><table id="kotTable" style="border-collapse:collapse;font-size:13px;width:100%"></table></div>
     <div id="kotNotes" style="font-size:12.5px;margin-top:10px"></div>
-    <p style="font-size:12px;color:var(--ink-soft);margin-top:10px">各部署が「予定として確定」した内容を書き出します（確定していない部署は出ません）。公休・有休・希望休の日は行になりません。半日の休みは、勤務する側の時間だけを書き出します。</p>
+    <p style="font-size:12px;color:var(--ink-soft);margin-top:10px">各部署が「予定として確定」した内容を書き出します（確定していない部署は出ません）。列の並びは、「#勤務日・従業員コード・パターンコード・出勤予定・退勤予定・休憩開始予定・休憩終了予定・時間帯区分コード・全日休暇・半休種別名称」です。公休・希望休の日は全日休暇「公休」、有休の日は「有休」の行になります（時間は空）。半日の休みは、勤務する側の時間だけを書き出します（半休種別は空）。時間帯区分コードは、パターンコードと同じコードを出します（休みの日は空）。</p>
   </div>
   <div class="modal-foot"><button class="btn" id="kotGo">CSVを書き出す</button><button class="btn primary" data-close>閉じる</button></div>
 </div></div>
@@ -868,7 +869,7 @@
   <div class="modal-body">
     <div class="seg" id="stView" style="margin-bottom:12px"><button class="segbtn" data-v="one" aria-pressed="true">個人設定（この部署）</button><button class="segbtn" data-v="all" aria-pressed="false">全部署の一覧</button></div>
     <div id="stOne">
-    <div class="mlabel">名前・色／職種／雇用形態（契約・時給は勤務できる曜日・勤務時間）</div>
+    <div class="mlabel">名前・色／職種／雇用形態（契約・時給は勤務できる曜日。時給は勤務時間も）</div>
     <div class="edit-list" id="staffList"></div>
     <div class="edit-row"><input type="text" id="newStaffName" placeholder="スタッフ名を追加" maxlength="12"><button class="btn sm" id="addStaff">＋ 追加</button></div>
     </div>
@@ -1108,28 +1109,28 @@ const hasDriveJob=()=>jobsOf().some(j=>j.drive);
 const KOT_EXCLUDE=["support"]; // KOTに反映しない部署（サポート）。台帳のコード入力も、CSVの書き出しも、なし
 const ASSIST_TO={day:"home",home:"day"}, ASSIST_COLOR="#B5762E", ASSIST_SHORT={day:"デイ",home:"訪問"};
 // 勤務表のマスに入れる、ドライバー（送迎）の記号。時間は勤務時間設定一覧の「ドライバー」の区分（朝 8:00〜10:00／夕 16:00〜18:00／朝夕＝朝＋夕）。出勤1日として数える
-const KIT_PATTERNS=[["朝","5:30〜9:00"],["朝日","5:30〜13:00"],["早1","9:00〜13:00"],["早2","9:00〜14:00"],["遅1","10:00〜15:00"],["遅2","11:00〜15:00"],["日夜","11:00〜18:30"],["夜","15:00〜18:30"],["早","5:30〜14:30"],["日F","8:30〜17:30"],["遅","9:30〜18:30"],["AM栄","5:30〜9:30"],["PM栄","14:30〜18:30"]]; // 「早」「日F」「遅」は月給・契約の勤務（日Fは、勤務表では「日」と表示。時給の「日」とは別の時間） // 栄養士・厨房の勤務（勤務時間設定一覧の「厨房」と同じ）
+const KIT_PATTERNS=[["朝","6:00〜9:00"],["朝日","6:00〜15:00"],["早","9:00〜13:00"],["遅","11:00〜15:00"],["日夜","9:00〜18:00"],["夜","15:00〜18:00"],["日F","9:00〜15:00"],["AM栄","5:30〜9:30"],["PM栄","14:30〜18:30"]]; // 「日F」は月給・契約の「日」（勤務表では「日」と表示。時給の「日」とは別の時間）。「早」「遅」は、月給・契約も時給も同じ時間 // 栄養士・厨房の勤務（勤務時間設定一覧の「厨房」と同じ）
 // 栄養士・厨房：時間帯ごとの人数（平日）。その時間帯のあいだ、いつも、この人数以上が勤務している状態にする。1日の最低出勤人数は使わない
-const KIT_BANDS=[{id:"b1",g:"wk",s:"5:30",e:"9:00",n:1},{id:"b2",g:"wk",s:"9:00",e:"13:00",n:2},{id:"b3",g:"wk",s:"15:00",e:"18:30",n:1},{id:"u1",g:"sun",s:"5:30",e:"9:00",n:1},{id:"u2",g:"sun",s:"9:00",e:"13:00",n:1},{id:"u3",g:"sun",s:"15:00",e:"18:30",n:1}]; // wk＝月〜土曜、sun＝日曜（祝日は関係なし）
+const KIT_BANDS=[{id:"b1",g:"wk",s:"6:00",e:"9:00",n:1},{id:"b2",g:"wk",s:"9:00",e:"13:00",n:2},{id:"b3",g:"wk",s:"15:00",e:"18:00",n:1},{id:"u1",g:"sun",s:"6:00",e:"9:00",n:1},{id:"u2",g:"sun",s:"9:00",e:"13:00",n:1},{id:"u3",g:"sun",s:"15:00",e:"18:00",n:1}]; // wk＝月〜土曜、sun＝日曜（祝日は関係なし）
 const kitBandsOf=g=>KIT_BANDS.filter(b=>!g||b.g===g).map(b=>({...b,n:((S.kband||{})[b.id]!==undefined)?(Number(S.kband[b.id])||0):b.n}));
 const hmN=v=>{const m=/^(\d{1,2}):(\d{2})$/.exec(v);return m?Number(m[1])*60+Number(m[2]):0;};
 const kitRange=code=>{ if(typeof code==="string"&&code.startsWith("W:")){ const st=S.staff.find(x=>"W:"+x.id===code), w=st&&st.workTime; if(w&&w.s&&w.e){ const a=hmN(w.s), e1=hmN(w.e); if(e1>a)return [a,e1]; } return null; } /* 時給の方の「勤務時間」（台帳で入力した時間） */ const t=(S.shiftTimes||{})[code]; if(t&&t.s&&t.e&&FSCOPE==="kitchen"){ const a=hmN(t.s), e0=hmN(t.e); if(e0>a)return [a,e0]; } const p=KIT_PATTERNS.find(x=>x[0]===code); const m=p&&/(\d+:\d+)〜(\d+:\d+)/.exec(p[1]); return m?[hmN(m[1]),hmN(m[2])]:null;}; // 勤務の時間（出勤人数・休業日設定で変えた時間があれば、それを使う）
 const kitTimeLabel=code=>{ const r=kitRange(code); const f=m=>Math.floor(m/60)+":"+String(m%60).padStart(2,"0"); return r?`${f(r[0])}〜${f(r[1])}`:""; };
 const kitWeekday=d=>!isSetOff(d); // 休業日は、人数を求めない
 const kitBandsDay=d=>kitBandsOf(dow(S.ym,d)===0?"sun":"wk"); // その日の時間帯ごとの人数（日曜は日曜の設定、ほかは月〜土曜の設定。祝日は関係なし）
-const kitCodeOf=(c,st)=>{ if(c==="日"){ if(st&&kitIsHourly(st)&&kitRange("W:"+st.id))return "W:"+st.id; return "日F"; } if(c==="日F")return null; return KIT_PATTERNS.some(x=>x[0]===c)?c:null; }; // 「日」：月給・契約は8:30〜17:30、時給は台帳の勤務時間（勤務表には、B6などの記号で出る）
+const kitCodeOf=(c,st)=>{ if(c==="日"){ if(st&&kitIsHourly(st)&&kitRange("W:"+st.id))return "W:"+st.id; return "日F"; } if(c==="日F")return null; c=({"早1":"早","早2":"早","遅1":"遅","遅2":"遅"})[c]||c; return KIT_PATTERNS.some(x=>x[0]===c)?c:null; }; // 「日」：月給・契約は8:30〜17:30、時給は台帳の勤務時間（勤務表には、B6などの記号で出る）
 const kitBandMin=(codes,b)=>{ let mn=Infinity; for(let t=hmN(b.s);t<hmN(b.e);t+=30){ let c=0; codes.forEach(code=>{const r=code&&kitRange(code); if(r&&r[0]<=t&&r[1]>=t+30)c++;}); if(c<mn)mn=c; } return mn===Infinity?0:mn; }; // 30分ごとに数えて、いちばん少ない人数
 const KIT_FULL=["早","日F","遅"], KIT_HALFPATS=["AM栄","PM栄"]; // 月給・契約が入れる勤務（勤務時間設定一覧の「常勤（栄養士）」）。AM栄・PM栄は、公休を2回続けてタップした半日の勤務（台帳では選ばない）。時給は、朝・朝日・早1…から選ぶ
 const KIT_FULL_CHOICES=[["早|日F|遅","早・日・遅が可能"],["早|遅","早・遅が可能"],["早|日F","早・日が可能"],["日F|遅","日・遅が可能"],["早","早のみ可能"],["日F","日のみ可能"],["遅","遅のみ可能"]]; // 月給・契約：1つ選ぶ
 const kitName=c=>c==="日F"||(typeof c==="string"&&c.startsWith("W:"))?"日":c;
 const kitIsHourly=s=>!!(s&&/時給/.test((typeById(s.typeId)||{}).name||""));
 const kitHalfCode=(sid,d)=>{ const h=(S.rhalf[sid]||{})[d]; return h==="am"?"PM栄":h==="pm"?"AM栄":null; }; // 午前休み＝午後に勤務（PM栄）、午後休み＝午前に勤務（AM栄）
-const kitOptsOf=s=>{ const hr=kitIsHourly(s); return KIT_PATTERNS.filter(x=>!KIT_HALFPATS.includes(x[0])&&KIT_FULL.includes(x[0])!==hr); };
-const kitPatsOf=s=>{ if(kitIsHourly(s)&&Array.isArray(s.kPats)&&s.kPats.length===0)return kitRange("W:"+s.id)?["W:"+s.id]:[]; /* 時給：チェックを全部外した状態。勤務時間が入っていれば、その時間（B6など）で入れる */ let a=Array.isArray(s&&s.kPats)?s.kPats:((s&&s.kPat)?[s.kPat]:[]); a=a.map(c=>c==="朝栄"?"早":c==="遅栄"?"遅":c); const ok=kitOptsOf(s).map(x=>x[0]); a=ok.filter(c=>a.includes(c)); return a.length?a:(kitIsHourly(s)?(kitRange("W:"+s.id)?["W:"+s.id]:["早1"]):["日F"]); }; // 台帳で選んだ勤務（複数選べる。未選択は、時給が早1、月給・契約が日）
+const kitOptsOf=s=>{ const hr=kitIsHourly(s); return KIT_PATTERNS.filter(x=>!KIT_HALFPATS.includes(x[0])&&(hr?x[0]!=="日F":KIT_FULL.includes(x[0]))); };
+const kitPatsOf=s=>{ if(kitIsHourly(s)&&Array.isArray(s.kPats)&&s.kPats.length===0)return kitRange("W:"+s.id)?["W:"+s.id]:[]; /* 時給：チェックを全部外した状態。勤務時間が入っていれば、その時間（B6など）で入れる */ let a=Array.isArray(s&&s.kPats)?s.kPats:((s&&s.kPat)?[s.kPat]:[]); a=a.map(c=>({"朝栄":"早","遅栄":"遅","早1":"早","早2":"早","遅栄":"遅","遅1":"遅","遅2":"遅"})[c]||c); const ok=kitOptsOf(s).map(x=>x[0]); a=ok.filter(c=>a.includes(c)); return a.length?a:(kitIsHourly(s)?(kitRange("W:"+s.id)?["W:"+s.id]:["早"]):["日F"]); }; // 台帳で選んだ勤務（複数選べる。未選択は、時給が早1、月給・契約が日）
 const kitPatOf=s=>kitPatsOf(s)[0];
 // その日の、時間帯ごとの足りない人数の合計（30分ごとに、必要な人数との差を足す）。休業日は0
 // 栄養士・厨房の時給者：有休を取ったときの時間。台帳で選んだ勤務ごとに、勤務時間設定一覧の実働時間（休憩を引いた時間）で計算する
-const kitPaidHTML=s=>{ if(!kitIsHourly(s))return ""; const tb=shiftTblLoad(); const ls=kitPatsOf(s).map(c=>{ const row=tb.find(r=>r.code===c&&r.cat==="厨房"), cc=row&&shiftTblCalc(row), h=cc?cc.jitsu:null; if(h==null)return ""; const pr=tb.find(r=>r.cat===PAIDLEAVE_CAT&&r.h!=null&&Math.abs(r.h-h)<1e-6); return `<b>${escapeHtml(c)}</b> ${fmtH(h)}時間${pr?"（記号："+escapeHtml(pr.code)+"）":""}`; }).filter(Boolean);
+const kitPaidHTML=s=>{ if(!kitIsHourly(s))return ""; const tb=shiftTblLoad(); const ls=kitPatsOf(s).map(c=>{ const row=tb.find(r=>r.code===c&&r.cat==="厨房"), cc=row&&shiftTblCalc(row), h=cc?cc.jitsu:null; if(h==null)return ""; const pr=tb.find(r=>r.cat===PAID_HR_CAT&&r.code==="有"+(c.startsWith("W:")?partSymbolOf(s):c)); return `<b>${escapeHtml(c.startsWith("W:")?"勤務時間":c)}</b> ${fmtH(h)}時間${pr?"（有休のパターン："+escapeHtml(pr.code)+"）":""}`; }).filter(Boolean);
   return ls.length?`<div class="line2 kit-paid"><div style="font-size:12px;color:var(--ink-soft)">有休を取ったときの時間（実働時間で計算）：${ls.join("　／　")}</div></div>`:""; };
 const kitDeficit=(d,codes)=>{ if(!kitWeekday(d))return 0; let t=0; kitBandsDay(d).forEach(b=>{ if(b.n<=0)return; for(let m=hmN(b.s);m<hmN(b.e);m+=30){ let c=0; codes.forEach(code=>{const r=code&&kitRange(code); if(r&&r[0]<=m&&r[1]>=m+30)c++;}); if(c<b.n)t+=b.n-c; } }); return t; };
 // その日の、スタッフごとの勤務（記号）。手入力済みはそのまま。空欄は、台帳で選んだ勤務から、時間帯の人数が満たされるものを選ぶ（1つだけ選んだ人はその勤務）
@@ -1157,7 +1158,7 @@ const SUMCOLS_BY_DEPT={home:SUMCOLS_HOME,nursing:SUMCOLS_HOME,office:SUMCOLS_OFF
 const SUMTOTAL_BOX={home:true,nursing:true,office:true,day:true,rehab:true,kitchen:true,kyotaku:true,support:true,test:true}; // 合計は表の外の別枠（右側）に出す
 const sumColsOf=()=>SUMCOLS_BY_DEPT[FSCOPE]||null;
 // 勤務表の下に出す「日ごとの記号別スタッフ数」の行（指定した部署のみ）
-const SHIFTROWS_BY_DEPT={home:["早","日","遅","夜"],nursing:["早","日","遅","夜"],office:["日"],rehab:["日"],kitchen:["朝","朝日","早1","早2","日","遅1","遅2","日夜","夜"],kyotaku:["日"],support:["日"],test:["日"]};
+const SHIFTROWS_BY_DEPT={home:["早","日","遅","夜"],nursing:["早","日","遅","夜"],office:["日"],rehab:["日"],kitchen:["朝","朝日","早","日","遅","日夜","夜"],kyotaku:["日"],support:["日"],test:["日"]};
 // 早番・日勤・遅番・夜勤の勤務時間（訪問介護・看護）。設定画面で変更できる
 const DEF_SHIFTTIMES={home:{"早":{s:"06:00",e:"15:00"},"日":{s:"08:30",e:"17:30"},"遅":{s:"13:00",e:"22:00"},"夜":{s:"21:00",e:"07:00"}}};
 DEF_SHIFTTIMES.nursing=JSON.parse(JSON.stringify(DEF_SHIFTTIMES.home)); // 看護は、早番6:00〜・遅番13:00〜（常勤）
@@ -1197,7 +1198,7 @@ const DEF_STATUS_ENABLED={
   home:["日","早","遅","夜","公","有","希"],
   office:["日","公","有","希"],
   nursing:["日","早","遅","夜","公","有","希"],
-  kitchen:["朝","朝日","早1","早2","日","遅1","遅2","日夜","夜","早","遅","公","有","希"],
+  kitchen:["朝","朝日","早","日","遅","日夜","夜","公","有","希"],
   rehab:["日","公","有","希"],
   kyotaku:["日","公","有","希"],
   support:["日","公","有","希"],
@@ -1397,8 +1398,11 @@ function halfHourOpts(cur){ const c=snapHalfHour(cur); let o=`<option value=""${
 // その日だけの勤務時間変更（非常勤）。通常と違う項目だけをマスに小さく表示
 // その日だけの時間変更（と休憩の選択）を反映したスタッフ。記号の決定に使う
 const staffOfDay=(s,o)=>({...s,workTime:{s:(o&&o.s)||(s.workTime||{}).s||"",e:(o&&o.e)||(s.workTime||{}).e||""},breakYes:(o&&o.by!=null)?o.by:s.breakYes,breakLong:(o&&o.bl!=null)?o.bl:s.breakLong});
-function timeMark(s,d,e){ const o=(S.rtime[s.id]||{})[d]; if(!o||!e.work)return"";
-  const u=s.workTime||{}, f=t=>t?t.replace(/^0/,""):"";
+// 訪問介護・看護の契約：公休の半日にしたマスを右クリック（長押し）して、働く時間を表示できる（数え方は、公休の半日のまま）
+const isHalfContract=(s,e)=>!!(s&&e&&e.hr&&typeName(s)==="契約"&&((EXP_F||FSCOPE)==="home"||(EXP_F||FSCOPE)==="nursing"));
+const baseTimeFor=(s,e)=>isHalfContract(s,e)?(e.hr==="am"?{s:"13:30",e:"17:30"}:{s:"08:30",e:"12:30"}):(s.workTime||{}); // 午前を休む日は午後（PM休）、午後を休む日は午前（AM休）の時間が通常
+function timeMark(s,d,e){ const o=(S.rtime[s.id]||{})[d]; if(!o||!e.work||!(hasOwnTime(s)||isHalfContract(s,e)))return"";
+  const u=baseTimeFor(s,e), f=t=>t?t.replace(/^0/,""):"";
   const brkChg=(o.by!=null&&o.by!==s.breakYes)||(o.bl!=null&&o.bl!==s.breakLong);
   if(!((o.s&&o.s!==u.s)||(o.e&&o.e!==u.e)||brkChg))return"";
   const st=o.s||u.s, en=o.e||u.e; // 開始〜終了をそろえて表示（変更していない側は通常の時刻）
@@ -1408,10 +1412,11 @@ function timeMark(s,d,e){ const o=(S.rtime[s.id]||{})[d]; if(!o||!e.work)return"
 let timeEditCtx=null;
 function openTimeEdit(sid,day){
   const s=staffById(sid); if(!s)return;
-  if(!isPartTimeType(typeById(s.typeId))){toast("時間変更は、契約・時給のスタッフで使えます");return;}
-  const e=effOf(memMd(),S.ym,sid,day,rmonthUsed()); if(!e.work){toast("出勤の日だけ設定できます");return;}
-  const u=s.workTime||{}, cur=(S.rtime[sid]||{})[day]||{s:u.s||"",e:u.e||""}, f=t=>t?t.replace(/^0/,""):"";
-  timeEditCtx={sid,day};
+  const e=effOf(memMd(),S.ym,sid,day,rmonthUsed());
+  if(!hasOwnTime(s)&&!isHalfContract(s,e)){toast("時間変更は、時給のスタッフと、公休の半日にした契約のスタッフ（訪問介護・看護）で使えます");return;}
+  if(!e.work){toast("出勤の日だけ設定できます");return;}
+  const u=baseTimeFor(s,e), cur=(S.rtime[sid]||{})[day]||{s:u.s||"",e:u.e||""}, f=t=>t?t.replace(/^0/,""):"";
+  timeEditCtx={sid,day}; $("#timeEditErr").textContent="";
   $("#timeEditTitle").textContent=`${s.name}　${+S.ym.slice(5)}月${day}日の勤務時間`;
   $("#timeEditUsual").textContent=(u.s||u.e)?`${f(u.s)}〜${f(u.e)}`:"未設定";
   $("#timeEditSel").innerHTML=timePartSelects("te-s",cur.s)+'<span style="margin:0 4px">–</span>'+timePartSelects("te-e",cur.e);
@@ -1437,9 +1442,18 @@ function renderTimeBrk(){ const box=$("#timeEditBrk"), c=timeEditCtx; if(!c)retu
   B.onchange=()=>{ if(B.checked)A.checked=false; c.brk[key]=B.checked?(yn?false:true):(A.checked?(yn?true:false):null); }; }
 function readTimeEdit(p){const root=$("#timeEditSel"),h=root.querySelector('.'+p+'-h').value,m=root.querySelector('.'+p+'-m').value;return h?h+":"+(m||"00"):"";}
 function commitTimeEdit(clear){
-  if(!timeEditCtx)return; pushUndo(); const {sid,day}=timeEditCtx, s=staffById(sid), u=s.workTime||{};
-  if(!S.rtime[sid])S.rtime[sid]={};
+  if(!timeEditCtx)return; const {sid,day}=timeEditCtx, s=staffById(sid), eh=effOf(memMd(),S.ym,sid,day,rmonthUsed()), u=baseTimeFor(s,eh);
   const a=clear?"":readTimeEdit("te-s"), b=clear?"":readTimeEdit("te-e");
+  if(!clear&&isHalfContract(s,eh)){ // 公休の半日にした契約：働く時間は、ちょうど4時間にする
+    const x=hmToMin(a), y=hmToMin(b); let err="";
+    if(x==null||y==null)err="開始と終了の時間を入れてください。";
+    else if(y<=x)err="終了は、開始より後の時間にしてください。";
+    else if(y-x<240)err=`開始〜終了が4時間未満です（${fmtH((y-x)/60)}時間）。公休の半日の働く時間は、4時間にしてください。`;
+    else if(y-x>240)err=`開始〜終了が4時間を超えています（${fmtH((y-x)/60)}時間）。公休の半日の働く時間は、4時間にしてください。`;
+    if(err){ $("#timeEditErr").textContent=err; return; } }
+  $("#timeEditErr").textContent="";
+  pushUndo();
+  if(!S.rtime[sid])S.rtime[sid]={};
   const bk=(timeEditCtx.brk)||{}, by=(bk.by!=null&&bk.by!==s.breakYes)?bk.by:null, bl=(bk.bl!=null&&bk.bl!==s.breakLong)?bk.bl:null; // 休憩の選択が、台帳の設定と違うときだけ保存
   if(clear||((!a&&!b)||(a===(u.s||"")&&b===(u.e||"")))&&by==null&&bl==null)delete S.rtime[sid][day]; else { const o={s:a,e:b}; if(by!=null)o.by=by; if(bl!=null)o.bl=bl; S.rtime[sid][day]=o; }
   saveRoster();renderRoster();closeModal("#timeEditOverlay");timeEditCtx=null;
@@ -1452,7 +1466,7 @@ const DOW_JP=["日","月","火","水","木","金","土"];
 const holidaySetOn=s=>["契約","時給"].includes(typeName(s));
 const holidayOkOf=s=>s.holOk!==false;
 function workDayOk(s,d){ if(holidaySetOn(s)&&!holidayOkOf(s)&&jpHoliday(S.ym,d))return false; if(!s.workDays||!isPartTimeType(typeById(s.typeId)))return true; return s.workDays.includes(dow(S.ym,d)); }
-function workTimeLabel(s){ const w=s.workTime; if(!w||!(w.s||w.e)||!isPartTimeType(typeById(s.typeId)))return"";
+function workTimeLabel(s){ const w=s.workTime; if(!w||!(w.s||w.e)||!hasOwnTime(s))return"";
   const f=t=>t?t.replace(/^0/,""):""; return `<div class="wt">${f(w.s)}〜${f(w.e)}</div>`; }
 // 非常勤の勤務時間（台帳）から、勤務時間設定一覧の記号（A6・B4.5・P2 など）を求める。
 // 6時間・6.5時間だけは、休憩あり（A・B）／なし（C・D）を台帳のチェックで選ぶ。該当がなければ null
@@ -1460,14 +1474,14 @@ function partDurHours(s){ const w=s&&s.workTime; if(!w||!w.s||!w.e)return null; 
 const partTblRows=s=>{ const w=s.workTime, a=hmToMin(w.s), b=hmToMin(w.e); return shiftTblLoad().filter(r=>/^非常勤/.test(r.cat||"")&&hmToMin(r.s)===a&&hmToMin(r.e)===b); };
 // 6時間・6.5時間で、一覧に休憩あり／なしの両方の記号（A・B／C・D）がある時間のときだけ、休憩の選択を出す
 // 休憩の選択：6時間・6.5時間は「休憩あり／なし」（A・B／C・D）、7時間以上は「休憩45分／1時間」（A・B／E・F）。該当する記号が一覧にあるときだけ出す
-function partBreakKind(s){ if(!s||!isPartTimeType(typeById(s.typeId))||s.job==="drv"||partDurHours(s)==null)return null; const rows=partTblRows(s);
+function partBreakKind(s){ if(!s||!hasOwnTime(s)||s.job==="drv"||partDurHours(s)==null)return null; const rows=partTblRows(s);
   if(rows.some(r=>/休憩(あり|なし)/.test(r.cat)))return "yn"; if(rows.some(r=>/休憩(45分|1時間)/.test(r.cat)))return "len";
   if(!rows.length){ const d=partDurHours(s); if(d>=6&&d<7)return "yn"; if(d>=7&&d<=10)return "len"; } // 一覧に同じ時間の行がない人（開始が8:30・9:00以外など）も、勤務時間の長さで休憩の選択を出す
   return null; }
 const partNeedsBreakChoice=s=>!!partBreakKind(s);
 function partSymbolOf(s){
   if(s&&(EXP_F||FSCOPE)==="day"&&s.job==="drv"){ const h=hoursPreset(s); return h==="both"?"朝夕":h==="am"?"朝":h==="pm"?"夕":null; } // ドライバー：台帳で選んだ朝夕・朝のみ・夕のみ
-  if(!s||!isPartTimeType(typeById(s.typeId)))return null;
+  if(!s||!hasOwnTime(s))return null;
   const d=partDurHours(s); if(d==null)return null;
   let rows=partTblRows(s); const kind=partBreakKind(s);
   if(kind==="yn"){ if(s.breakYes===true||s.breakYes===false)rows=rows.filter(r=>/休憩(あり|なし)/.test(r.cat)&&/休憩あり/.test(r.cat)===(s.breakYes===true)); else return null; }
@@ -1483,6 +1497,7 @@ function symActualText(s){ const h=partActualHours(s); return h==null?"":`（実
 // 希望休は勤務表に赤い「希」で表示（印刷・PDFでも赤）
 const WISH_RED="#C9524D";
 const isWishStatus=st=>!!(st&&(st.code==="希"||/希望/.test(st.label||"")));
+const hasOwnTime=s=>!!(s&&isPartTimeType(typeById(s.typeId))&&typeName(s)!=="契約"); // 勤務時間を台帳で決める人（時給）。契約は月給と同じ8:30〜17:30（8時間）で、時間は入力しない
 const isPartTimeType=t=>!!(t&&/時給|契約|非常勤/.test(t.name||"")); // 時給・契約：勤務できる曜日と勤務時間を台帳で決める人（半休なし・休日数の目標なし）
 // 年間休日の表（部署×1〜12月）。管理者が設定。未設定の月は既定9日。非常勤は目標なし
 /* ---- 祝日・祭日（日本の祝日を、プログラムで計算する。振替休日・国民の休日を含む） ---- */
@@ -1515,7 +1530,7 @@ function staffTarget(s){ const t=typeById(s.typeId); if(isPartTimeType(t)&&typeN
 const canEarlyOf=s=>(s.canEarly===undefined||s.canEarly===null)?!isPartTimeType(typeById(s.typeId)):!!s.canEarly;
 const canLateOf=s=>(s.canLate===undefined||s.canLate===null)?!isPartTimeType(typeById(s.typeId)):!!s.canLate;
 // 勤務の入り方（訪問介護・看護）：早番・遅番・夜勤を、プルダウン1つで選ぶ
-const SHIFT_MODES=[["day","日勤のみ"],["e","早番 可能（日勤と早番）"],["el","早番・遅番 可能（夜勤なし）"],["all","早番・遅番・夜勤 可能"],["night","夜勤 可能（日勤と夜勤）"],["earlyOnly","早番のみ"],["lateOnly","遅番のみ"],["nightOnly","夜勤のみ"]];
+const SHIFT_MODES=[["day","日勤のみ"],["e","早番 可能（日勤と早番）"],["el","早番・遅番 可能（夜勤なし）"],["all","早番・遅番・夜勤 可能"],["night","日勤・夜勤（早番・遅番なし）"],["earlyOnly","早番のみ"],["lateOnly","遅番のみ"],["nightOnly","夜勤のみ"]];
 function shiftModeOf(s){ if(s.nightOnly)return "nightOnly"; if(s.earlyOnly)return "earlyOnly"; if(s.lateOnly)return "lateOnly";
   const e=canEarlyOf(s), l=canLateOf(s), n=!!s.canNight; if(n)return (e||l)?"all":"night"; if(e&&!l)return "e"; return (e||l)?"el":"day"; }
 function applyShiftMode(s,m){ s.earlyOnly=m==="earlyOnly"; s.lateOnly=m==="lateOnly"; s.nightOnly=m==="nightOnly";
@@ -1831,7 +1846,7 @@ function renderBrushes(){
     const FS=["早","日","遅"];
     row("",[...FS,"公","有","希"],(r,list)=>{ FS.forEach(c=>{ const st=list.find(x=>x.code===c); if(st)r.appendChild(mkBrush(st)); });
       list.filter(st=>!FS.includes(st.code)).forEach(st=>r.appendChild(mkBrush(st)));
-      if(S.staff.some(s=>isPartTimeType(typeById(s.typeId)))){ const tb=document.createElement('button');tb.className="brush";tb.id="btnTimeBrush";tb.setAttribute('aria-pressed',brush==="@time");
+      if(S.staff.some(s=>hasOwnTime(s))){ const tb=document.createElement('button');tb.className="brush";tb.id="btnTimeBrush";tb.setAttribute('aria-pressed',brush==="@time");
         tb.innerHTML=`<span class="chip" style="background:#5E6A66">🕒</span>時間変更`;tb.onclick=()=>{brush="@time";renderBrushes();};r.appendChild(tb); } });
     row("時給",KIT_PATTERNS.map(x=>x[0]).filter(c=>!KIT_FULL.includes(c)&&!KIT_HALFPATS.includes(c)&&c!=="日"));
     return; }
@@ -1845,7 +1860,7 @@ function renderBrushes(){
     const b=document.createElement('button');b.className="brush";b.id="btnDrvBrush";b.title="タップするたびに 朝 → 夕 → 朝夕 → 消す";b.setAttribute('aria-pressed',brush==="@drv");
     b.innerHTML=`<span class="chip" style="background:${(statusByCode("日")||{}).color||"#3E7CB1"}">送</span>送迎`;
     b.onclick=()=>{brush="@drv";renderBrushes();};w.appendChild(b); }
-  if(S.staff.some(s=>isPartTimeType(typeById(s.typeId)))){ // 非常勤の「その日だけ」の勤務時間変更
+  if(S.staff.some(s=>hasOwnTime(s))){ // 非常勤の「その日だけ」の勤務時間変更
     const tb=document.createElement('button');tb.className="brush";tb.id="btnTimeBrush";tb.setAttribute('aria-pressed',brush==="@time");
     tb.innerHTML=`<span class="chip" style="background:#5E6A66">🕒</span>時間変更`;tb.onclick=()=>{brush="@time";renderBrushes();};w.appendChild(tb);
   }
@@ -1989,12 +2004,17 @@ function renderRoster(){
     const mr=[...T.querySelectorAll('thead tr, tbody tr')], sr=[...rt.querySelectorAll('thead tr, tbody tr')];
     mr.forEach((r,i)=>{if(sr[i])sr[i].style.height=r.getBoundingClientRect().height+'px';});
   } else { rt.hidden=true; rt.innerHTML=""; }
-  $$("td.rc",T).forEach(td=>{td.onclick=()=>{
+  $$("td.rc",T).forEach(td=>{
+    const halfTime=()=>{ const s=staffById(td.dataset.sid); if(!s||planClosed())return false; const e=effOf(memMd(),S.ym,s.id,+td.dataset.day,rmonthUsed()); if(!isHalfContract(s,e))return false; openTimeEdit(s.id,+td.dataset.day); return true; };
+    td.oncontextmenu=ev=>{ if(halfTime())ev.preventDefault(); }; // 右クリック：公休の半日にした契約の、働く時間を決める
+    let lpT=null; td.ontouchstart=()=>{ clearTimeout(lpT); lpT=setTimeout(()=>{ if(halfTime())td._lp=true; },600); }; td.ontouchend=td.ontouchmove=td.ontouchcancel=()=>clearTimeout(lpT); // 長押し（タブレット・スマホ）
+    td.onclick=()=>{
+    if(td._lp){td._lp=false;return;}
     const sid=td.dataset.sid,day=+td.dataset.day;if(!S.roster[sid])S.roster[sid]={};
     if(planClosed()){ toast("この月は実績確定済みです。変更するには、管理者が解除してください"); return; }
     if(brush==="@time"){ openTimeEdit(sid,day); return; }
-    const stf=S.staff.find(x=>x.id===sid), noHalf=!!(stf&&(FSCOPE==="kitchen"?kitIsHourly(stf):isPartTimeType(typeById(stf.typeId)))); // 非常勤は半休（AM／PM）を取れない
-    const hb=brush&&statusByCode(brush); if(noHalf&&hb&&hb.half){ toast("契約・時給のスタッフの半休は入力できません"); return; }
+    const stf=S.staff.find(x=>x.id===sid), noHalf=!!(stf&&(FSCOPE==="kitchen"?kitIsHourly(stf):(isPartTimeType(typeById(stf.typeId))&&!((FSCOPE==="home"||FSCOPE==="nursing")&&typeName(stf)==="契約")))); // 非常勤は半休（AM／PM）を取れない
+    const hb=brush&&statusByCode(brush); if(noHalf&&hb&&hb.half){ toast("時給のスタッフ（訪問介護・看護以外は契約も）の半休は入力できません"); return; }
     pushUndo();
     if(!S.rhalf[sid])S.rhalf[sid]={};
     if(S.rtime[sid])delete S.rtime[sid][day]; // 記号を変えたら、その日の時間変更は解除
@@ -2037,7 +2057,7 @@ function renderStaffList(){
     const tb=document.createElement('div'); tb.style.cssText="margin-bottom:10px"; tb.innerHTML=`<button class="btn sm" type="button">🧪 テスト用の5名を入れる</button><span style="font-size:12px;color:var(--ink-soft);margin-left:8px">月給1名・契約1名・時給3名（架空の人物）</span>`;
     tb.querySelector('button').onclick=()=>{ const T=n=>(S.types.find(t=>t.name===n)||{}).id; const all=[0,1,2,3,4,5,6];
       const list=[{name:"テスト 月給A",typeId:T("月給"),kotCode:"T001"},
-        {name:"テスト 契約A",typeId:T("契約"),kotCode:"T002",workTime:{s:"08:30",e:"17:30"},breakLong:true,workDays:[2,3,4,5,6],offStrict:true},
+        {name:"テスト 契約A",typeId:T("契約"),kotCode:"T002",workDays:[2,3,4,5,6]},
         {name:"テスト 時給A",typeId:T("時給"),kotCode:"T003",workTime:{s:"09:00",e:"15:00"},breakYes:false,workDays:[1,3,5]},
         {name:"テスト 時給B",typeId:T("時給"),kotCode:"T004",workTime:{s:"08:30",e:"17:30"},breakLong:true,workDays:[1,2,4,5]},
         {name:"テスト 時給C",typeId:T("時給"),kotCode:"T005",workTime:{s:"08:30",e:"17:30"},breakLong:true,workDays:[2,3,5,6]}];
@@ -2077,7 +2097,7 @@ function renderStaffList(){
       ${isDrv?`<div class="line2"><div style="font-size:12px;color:var(--ink-soft)">雇用形態：時給（ドライバーは時給です）</div></div>`:`<div class="line2">
         <div class="fl"><span>雇用形態</span><div class="seg tyseg">${segs}</div></div>
       </div>`}
-      ${isPartTimeType(typeById(s.typeId))?`${(isDrv||(FSCOPE==="kitchen"&&!kitIsHourly(s)))?"":`<div class="line2">
+      ${isPartTimeType(typeById(s.typeId))?`${(isDrv||typeName(s)==="契約"||(FSCOPE==="kitchen"&&!kitIsHourly(s)))?"":`<div class="line2">
         <div class="fl"><span>勤務時間</span>
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${timePartSelects("wt-s",(s.workTime||{}).s)}<span style="margin:0 4px">–</span>${timePartSelects("wt-e",(s.workTime||{}).e)}</div></div>
       </div>
@@ -2085,10 +2105,10 @@ function renderStaffList(){
         return `<div class="line2"><div class="fl"><span>${yn?"休憩（6時間・6.5時間の勤務）":"休憩（7時間以上の勤務）"}</span>
           <div style="display:flex;gap:16px;flex-wrap:wrap"><label class="wk" style="${lb}"><input type="checkbox" class="brk-a" data-k="${yn?"breakYes":"breakLong"}" data-v="${yn?"1":"0"}"${cur===(yn?true:false)?" checked":""} style="${ck}">${yn?"休憩あり":"45分"}</label>
           <label class="wk" style="${lb}"><input type="checkbox" class="brk-b" data-k="${yn?"breakYes":"breakLong"}" data-v="${yn?"0":"1"}"${cur===(yn?false:true)?" checked":""} style="${ck}">${yn?"休憩なし":"1時間"}</label></div></div></div>`; })():""}
-      ${(!(FSCOPE==="kitchen"&&!kitIsHourly(s))&&partDurHours(s)!=null)?`<div class="line2"><div style="font-size:12px;color:var(--ink-soft)">勤務表に出る記号：<b>${partSymbolOf(s)?escapeHtml(partSymbolOf(s))+escapeHtml(symActualText(s)):"該当なし"}</b>${partNeedsBreakChoice(s)&&!partSymbolOf(s)?(partBreakKind(s)==="yn"?"（休憩あり・なしを選ぶと決まります）":"（45分・1時間を選ぶと決まります）"):""}</div>${partActualHours(s)!=null?`<div style="font-size:12px;color:var(--ink-soft);margin-top:2px">有休を取ったときの時間：<b>${fmtH(partActualHours(s))}時間</b>（実働時間で計算）${(()=>{ const pr=shiftTblLoad().find(r=>r.cat===PAIDLEAVE_CAT&&r.h!=null&&Math.abs(r.h-partActualHours(s))<1e-6); return pr?"　記号："+escapeHtml(pr.code):""; })()}</div>`:""}</div>`:""}`}
+      ${(!(FSCOPE==="kitchen"&&!kitIsHourly(s))&&partDurHours(s)!=null)?`<div class="line2"><div style="font-size:12px;color:var(--ink-soft)">勤務表に出る記号：<b>${partSymbolOf(s)?escapeHtml(partSymbolOf(s))+escapeHtml(symActualText(s)):"該当なし"}</b>${partNeedsBreakChoice(s)&&!partSymbolOf(s)?(partBreakKind(s)==="yn"?"（休憩あり・なしを選ぶと決まります）":"（45分・1時間を選ぶと決まります）"):""}</div>${partActualHours(s)!=null?`<div style="font-size:12px;color:var(--ink-soft);margin-top:2px">有休を取ったときの時間：<b>${fmtH(partActualHours(s))}時間</b>（実働時間で計算）${(()=>{ const pr=shiftTblLoad().find(r=>r.cat===PAID_HR_CAT&&r.code==="有"+partSymbolOf(s)); return pr?"　KOTの有休のパターン："+escapeHtml(pr.code):""; })()}</div>`:""}</div>`:""}`}
       <div class="line2">
         <div class="fl" style="flex:1"><span>勤務できる曜日</span>
-          <div class="seg wdseg">${DOW.map((w,i)=>`<button class="segbtn" data-wd="${i}" aria-pressed="${!s.workDays||s.workDays.includes(i)}">${w}</button>`).join("")}${holidaySetOn(s)?`<button class="segbtn" data-hol="1" title="祝日・祭日に出勤できる" aria-pressed="${holidayOkOf(s)}">祝</button>`:""}</div>${typeName(s)==="契約"?`<label class="wk" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;margin-top:6px"><input type="checkbox" class="off-strict" ${s.offStrict?"checked":""} style="width:18px;height:18px;accent-color:var(--accent)">勤務できない曜日は、必ず休みにする</label>`:""}</div>
+          <div class="seg wdseg">${DOW.map((w,i)=>`<button class="segbtn" data-wd="${i}" aria-pressed="${!s.workDays||s.workDays.includes(i)}">${w}</button>`).join("")}${holidaySetOn(s)?`<button class="segbtn" data-hol="1" title="祝日・祭日に出勤できる" aria-pressed="${holidayOkOf(s)}">祝</button>`:""}</div></div>
       </div>`:""}
       ${(FSCOPE==="day"&&(s.job==="drv"||s.hours))?`<div class="line2">
         <div class="fl" style="flex:1"><span>勤務時間帯（ドライバー）</span><div class="seg hseg">${hbtns}</div></div>
@@ -2099,8 +2119,8 @@ function renderStaffList(){
         ?`<div class="line2"><div class="fl" style="flex:1"><span>勤務（入れる勤務を選びます。複数選べます）</span><div class="kit-pats" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px">${kitOptsOf(s).map(([c,lb])=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;white-space:nowrap"><input type="checkbox" data-pat="${c}" ${kitPatsOf(s).includes(c)?"checked":""} style="width:17px;height:17px;accent-color:var(--accent)">${c}<span style="font-weight:400;color:var(--ink-soft);font-size:12px">${kitTimeLabel(c)||lb}</span></label>`).join("")}</div></div></div>`
         :`<div class="line2"><div class="fl"><span>勤務（入れる勤務）</span><select class="kit-sel" style="font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:8px;padding:7px 9px;font-weight:700">${KIT_FULL_CHOICES.map(([v,l])=>`<option value="${v}"${v===kitPatsOf(s).join("|")?" selected":""}>${l}</option>`).join("")}</select></div></div>`):""}
       ${FSCOPE==="kitchen"?`<div class="line2"><label class="wk" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px"><input type="checkbox" class="rd-in" ${s.rdQual?"checked":""} style="width:18px;height:18px;accent-color:var(--accent)">管理栄養士</label></div>`:""}
-      ${(!isDrv&&!isPartTimeType(typeById(s.typeId))&&(FSCOPE==="home"||FSCOPE==="nursing"))?`<div class="line2"><div class="fl"><span>日勤の開始時間（KOT用）</span>
-        <div style="display:flex;gap:16px;flex-wrap:wrap"><label class="wk" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px"><input type="checkbox" class="ds-a"${s.dayStart==="09:00"?"":" checked"} style="width:18px;height:18px;accent-color:var(--accent)">8:30（日勤A　8:30〜17:30）</label>
+      ${(!isDrv&&!hasOwnTime(s)&&(FSCOPE==="home"||FSCOPE==="nursing"))?`<div class="line2"><div class="fl"><span>日勤の開始時間（KOT用）</span>
+        <div style="display:flex;gap:16px;flex-wrap:wrap"><label class="wk" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px"><input type="checkbox" class="ds-a"${(typeName(s)==="契約"?s.dayStart==="08:30":s.dayStart!=="09:00")?" checked":""} style="width:18px;height:18px;accent-color:var(--accent)">8:30（日勤A　8:30〜17:30）</label>
         <label class="wk" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px"><input type="checkbox" class="ds-b"${s.dayStart==="09:00"?" checked":""} style="width:18px;height:18px;accent-color:var(--accent)">9:00（日勤B　9:00〜18:00）</label></div></div></div>`:""}`;
     card.querySelector('.nm-in').value=s.name;
     card.querySelector('input[type=color]').oninput=e=>{s.color=e.target.value;saveStaff();refreshAll();};
@@ -2136,7 +2156,6 @@ function renderStaffList(){
     card.querySelectorAll('.hrow').forEach(row=>{const band=row.dataset.band;
       row.querySelector('.hs').onchange=e=>{s.hours[band].s=e.target.value;saveStaff();if(S.tab==="board")renderBoard();};
       row.querySelector('.he').onchange=e=>{s.hours[band].e=e.target.value;saveStaff();if(S.tab==="board")renderBoard();};});
-    const ofs=card.querySelector('.off-strict'); if(ofs)ofs.onchange=e=>{s.offStrict=e.target.checked;saveStaff();}; // 契約：勤務できない曜日を必ず休みにする（公休の目標を超えても）
     card.querySelectorAll('.wdseg .segbtn').forEach(b=>b.onclick=()=>{ // 勤務できる曜日の切り替え（全曜日＝制限なし）
       if(b.dataset.hol){ s.holOk=!holidayOkOf(s); saveStaff(); renderStaffList(); if(S.tab==="roster")renderRoster(); return; } // 祝日・祭日に出勤できるか
       const wd=+b.dataset.wd; let cur=s.workDays?s.workDays.slice():[0,1,2,3,4,5,6];
@@ -2150,7 +2169,7 @@ function renderStaffList(){
       card.querySelectorAll('.wt-s-m,.wt-e-m').forEach(sel=>{sel.onchange=()=>{const h=card.querySelector('.'+sel.className.replace('-m','-h')); if(sel.value&&!h.value){sel.value="";} upd();};});
     }
     { const da=card.querySelector('.ds-a'), db=card.querySelector('.ds-b'); // 常勤の日勤の開始時間（8:30＝日勤A／9:00＝日勤B）
-      if(da&&db){ da.onchange=()=>{ s.dayStart=da.checked?"08:30":"09:00"; saveStaff(); renderStaffList(); }; db.onchange=()=>{ s.dayStart=db.checked?"09:00":"08:30"; saveStaff(); renderStaffList(); }; } }
+      if(da&&db){ const ct=typeName(s)==="契約"; /* 契約は、早番・遅番だけの人もいるため、どちらも選ばない（空）ことができる */ da.onchange=()=>{ s.dayStart=da.checked?"08:30":(ct?"":"09:00"); saveStaff(); renderStaffList(); }; db.onchange=()=>{ s.dayStart=db.checked?"09:00":(ct?"":"08:30"); saveStaff(); renderStaffList(); }; } }
     const ba=card.querySelector('.brk-a'), bb=card.querySelector('.brk-b'); // 休憩の選択（どちらか一方）
     if(ba&&bb){ [ba,bb].forEach(el=>{ el.onchange=()=>{ const other=el===ba?bb:ba; if(el.checked)other.checked=false; const key=el.dataset.k; s[key]=el.checked?(el.dataset.v==="1"):(other.checked?(other.dataset.v==="1"):null); saveStaff(); renderStaffList(); if(S.tab==="roster")renderRoster(); }; }); }
     { const mv=dir=>{ const gk=jobKeyOf(s); let j=i+dir; while(j>=0&&j<S.staff.length&&groupedDept()&&jobKeyOf(S.staff[j])!==gk)j+=dir; if(j<0||j>=S.staff.length)return; if(groupedDept()&&jobKeyOf(S.staff[j])!==gk)return; [S.staff[i],S.staff[j]]=[S.staff[j],S.staff[i]]; saveStaff(); renderStaffList(); refreshAll(); }; // 同じ職種の中で、上下に入れ替える
@@ -2535,7 +2554,7 @@ $("#doAuto").onclick=()=>{
     for(let d=1;d<=nd;d++){ if(!rr[d]&&isSetOff(d)){rr[d]=rcode;setAuto(s.id,d,true);} }          // 事業所の休業日 → 公休
     const cand=[]; for(let d=1;d<=nd;d++){ if(!rr[d]&&!workDayOk(s,d))cand.push(d); }            // 非常勤の勤務できない曜日・祝日 → 公休
     const tg0=staffTarget(s); let use=cand;
-    if(tg0!=null&&typeName(s)==="契約"&&!s.offStrict){ let o=0; for(let d=1;d<=nd;d++){const c=rr[d],st=c&&statusByCode(c); if(st&&!st.work&&!isPaidSt(st))o+=st.half?0.5:1;} use=spread(cand,Math.max(0,Math.floor(tg0-o+1e-9))); } // 契約は、公休が規定の日数を超えないよう、勤務できない日の一部を出勤にする
+    if(tg0!=null&&typeName(s)==="契約"){ let o=0; for(let d=1;d<=nd;d++){const c=rr[d],st=c&&statusByCode(c); if(st&&!st.work&&!isPaidSt(st))o+=st.half?0.5:1;} use=spread(cand,Math.max(0,Math.floor(tg0-o+1e-9))); } // 契約は、公休が規定の日数を超えないよう、勤務できない日の一部を出勤にする
     use.forEach(d=>{rr[d]=rcode;setAuto(s.id,d,true);}); });
   const wOfCode=(c,s,d)=>{ if(c==="応")return 0; if(!c)return (s&&s.nightOnly)?0:1; const st=statusByCode(c); if(st&&!st.work&&!isWishStatus(st)&&s&&d&&(S.rhalf[s.id]||{})[d])return 0.5; return st?(st.half?0.5:(st.work?1:0)):1; }; // 空欄=出勤候補1・半日=0.5
   // 夜勤明け：夜勤の次の日は、休みにする（夜勤が続く場合は、最後の夜勤の次の日が休み）。夜勤明けの休みをなくす場合は false
@@ -2578,12 +2597,14 @@ $("#doAuto").onclick=()=>{
     const offOf=s=>{let o=0;const rr=S.roster[s.id];for(let d=1;d<=nd;d++){const st=rr[d]&&statusByCode(rr[d]);if(st&&!isPaidSt(st))o+=st.half?0.5:(!st.work?((S.rhalf[s.id]||{})[d]&&!isWishStatus(st)?0.5:1):0);}return o;};
     // 基本は1回ずつ。1回ずつでは、その晩に入れる人がいないときだけ、前の日に夜勤の人が続けて入る（最大 S.nightRun 回まで。続けた最後の翌日が休み）
     const runMax=Math.max(1,Number(S.nightRun)||1);
+    const wishNext=(rr,d)=>d<nd&&!!rr[d+1]&&isWishStatus(statusByCode(rr[d+1])); // 翌日が希望休のときは、その日に夜勤を入れない（希望休の前に夜勤を入れない）
     const tryExtend=d=>{ if(!NIGHT_AKE||runMax<2||d<2)return false; let best=null,bs=Infinity;
       cands.forEach(s=>{ const rr=S.roster[s.id]; if(rr[d-1]!==nightSt.code)return;
         if(!(S.rauto[s.id]||{})[d]||!isRestC(rr[d]))return;                       // その日が、夜勤明けの自動の休みであること
         let run=0; for(let k=d-1;k>=1&&rr[k]===nightSt.code;k--)run++; if(run>=Math.min(runMax,2))return;
         const want=(s.nightCount==null||s.nightCount==='')?null:Number(s.nightCount); if(want!=null&&nCnt[s.id]>=want)return;
         if(!workDayOk(s,d))return;
+        if(wishNext(rr,d))return;
         if(d<nd&&rr[d+1]&&!isRestC(rr[d+1]))return;                                // 翌日がすでに勤務なら不可
         const sc=nCnt[s.id]; if(sc<bs){bs=sc;best=s;} });
       if(!best)return false; const rr=S.roster[best.id];
@@ -2595,6 +2616,7 @@ $("#doAuto").onclick=()=>{
       while(have<nightN){
         let best=null,bs=Infinity;
         cands.forEach(s=>{const rr=S.roster[s.id]; if(rr[d])return;
+          if(wishNext(rr,d))return;
           if(!NIGHT_AKE){ let run=0, k=d-1; for(;k>=1&&isNight(rr[k]);k--)run++; if(k<1)run+=(prevTail[s.id]||0); if(run>=Math.min(runMax,2))return;   // 続けて入れる夜勤は、最大2回まで（絶対）
             if(run>=1&&d<nd&&rr[d+1]&&!isRestC(rr[d+1]))return; } // 2日続く夜勤は、次の日が休みにできるときだけ（次の日に手入力の勤務があれば、入れない）
           { const w0=(s.nightCount==null||s.nightCount==='')?null:Number(s.nightCount); if(w0!=null&&w0<=4&&(wkN[s.id][wkOf(d)]||0)>=1)return; } // 月の夜勤が4回以下の人は、1週間に1回まで（週に1回のペース）
@@ -3075,12 +3097,14 @@ $$("#stView .segbtn").forEach(b=>b.onclick=()=>setStaffView(b.dataset.v));
 
 // ---- 管理者：勤務時間設定一覧（記号ごとの開始・終了・休憩・実働。全部署で共通の控え。まだ他の画面とは連動しない） ----
 const SHIFTTBL_KEY="yakuwari:shifttable";
-const SHIFTTBL_SEED=[["常勤","日勤A","08:30","17:30",0,60,"12:00〜13:00","非常勤のA9と同じ時間"],["常勤","日勤B","09:00","18:00",0,60,"12:00〜13:00","非常勤のB9と同じ時間"],["常勤","早看","06:00","15:00",0,60,"10:00〜11:00","看護の早番"],["常勤","遅看","13:00","22:00",0,60,"17:00〜18:00","看護の遅番"],["常勤","早介","07:00","16:00",0,60,"","訪問介護の早番"],["常勤","遅介","12:00","21:00",0,60,"","訪問介護の遅番"],["常勤","夜","21:00","07:00",1,120,"1:00〜3:00","休憩2時間"],["常勤","AM休","08:30","12:30",0,0,"","非常勤のA4と同じ時間"],["常勤","PM休","13:30","17:30",0,0,"",""],["常勤の有休","有休","","",0,0,"","1日休み（時間なし）"],["常勤の有休","AM有","","",0,0,"","午前を休み、午後は半日・午後に出勤（案）"],["常勤の有休","PM有","","",0,0,"","午後を休み、午前は半日・午前に出勤（案）"],["常勤（栄養士）","早","05:30","14:30",0,60,"09:00〜10:00","月給・契約（栄養士）"],["常勤（栄養士）","日","08:30","17:30",0,60,"12:00〜13:00","月給・契約（栄養士）"],["常勤（栄養士）","遅","09:30","18:30",0,60,"12:30〜13:30","月給・契約（栄養士）"],["常勤（栄養士）","AM栄","05:30","09:30",0,0,"","月給・契約（栄養士）"],["常勤（栄養士）","PM栄","14:30","18:30",0,0,"","月給・契約（栄養士）"],["非常勤（6時間未満）","A4","08:30","12:30",0,0,"","6時間未満は休憩なし"],["非常勤（6時間未満）","A4.5","08:30","13:00",0,0,"","6時間未満は休憩なし"],["非常勤（6時間未満）","A5","08:30","13:30",0,0,"","6時間未満は休憩なし"],["非常勤（6時間未満）","A5.5","08:30","14:00",0,0,"","6時間未満は休憩なし"],["非常勤（休憩あり）","A6","08:30","14:30",0,30,"12:00〜12:30","6時間は休憩30分"],["非常勤（休憩あり）","A6.5","08:30","15:00",0,30,"12:00〜12:30","6.5時間は30分"],["非常勤（休憩45分）","A7","08:30","15:30",0,45,"12:00〜12:45",""],["非常勤（休憩45分）","A7.5","08:30","16:00",0,45,"12:00〜12:45",""],["非常勤（休憩45分）","A8","08:30","16:30",0,45,"12:00〜12:45",""],["非常勤（休憩45分）","A8.5","08:30","17:00",0,45,"12:00〜12:45",""],["非常勤（休憩45分）","A9","08:30","17:30",0,45,"12:00〜12:45",""],["非常勤（休憩45分）","A9.5","08:30","18:00",0,45,"12:00〜12:45",""],["非常勤（6時間未満）","B3.5","09:00","12:30",0,0,"","6時間未満は休憩なし"],["非常勤（6時間未満）","B4","09:00","13:00",0,0,"","6時間未満は休憩なし"],["非常勤（6時間未満）","B4.5","09:00","13:30",0,0,"","6時間未満は休憩なし"],["非常勤（6時間未満）","B5","09:00","14:00",0,0,"","6時間未満は休憩なし"],["非常勤（6時間未満）","B5.5","09:00","14:30",0,0,"","6時間未満は休憩なし"],["非常勤（休憩あり）","B6","09:00","15:00",0,30,"12:00〜12:30","6時間は休憩30分"],["非常勤（休憩あり）","B6.5","09:00","15:30",0,30,"12:00〜12:30","6.5時間は30分"],["非常勤（休憩45分）","B7","09:00","16:00",0,45,"12:00〜12:45",""],["非常勤（休憩45分）","B7.5","09:00","16:30",0,45,"12:00〜12:45",""],["非常勤（休憩45分）","B8","09:00","17:00",0,45,"12:00〜12:45",""],["非常勤（休憩45分）","B8.5","09:00","17:30",0,45,"12:00〜12:45",""],["非常勤（休憩45分）","B9","09:00","18:00",0,45,"12:00〜12:45",""],["非常勤（休憩なし）","C6","08:30","14:30",0,0,"","6時間で休憩なし"],["非常勤（休憩なし）","C6.5","08:30","15:00",0,0,"","6.5時間で休憩なし"],["非常勤（休憩なし）","D6","09:00","15:00",0,0,"","6時間で休憩なし"],["非常勤（休憩なし）","D6.5","09:00","15:30",0,0,"","6.5時間で休憩なし"],["非常勤（休憩1時間）","E7","08:30","15:30",0,60,"12:00〜13:00",""],["非常勤（休憩1時間）","E7.5","08:30","16:00",0,60,"12:00〜13:00",""],["非常勤（休憩1時間）","E8","08:30","16:30",0,60,"12:00〜13:00",""],["非常勤（休憩1時間）","E8.5","08:30","17:00",0,60,"12:00〜13:00",""],["非常勤（休憩1時間）","E9","08:30","17:30",0,60,"12:00〜13:00",""],["非常勤（休憩1時間）","E9.5","08:30","18:00",0,60,"12:00〜13:00",""],["非常勤（休憩1時間）","F7","09:00","16:00",0,60,"12:00〜13:00",""],["非常勤（休憩1時間）","F7.5","09:00","16:30",0,60,"12:00〜13:00",""],["非常勤（休憩1時間）","F8","09:00","17:00",0,60,"12:00〜13:00",""],["非常勤（休憩1時間）","F8.5","09:00","17:30",0,60,"12:00〜13:00",""],["非常勤（休憩1時間）","F9","09:00","18:00",0,60,"12:00〜13:00",""],["非常勤（6時間未満）","G4","08:00","12:00",0,0,"","6時間未満は休憩なし"],["非常勤（6時間未満）","G5","08:00","13:00",0,0,"","6時間未満は休憩なし"],["非常勤（そのほか）","P1.5","14:00","15:30",0,0,"",""],["非常勤（そのほか）","P2","10:00","12:00",0,0,"",""],["非常勤（そのほか）","P4","10:00","14:00",0,0,"",""],["非常勤（そのほか）","P9","12:00","21:00",0,60,"12:00〜13:00",""],["非常勤（そのほか）","P10","21:00","07:00",1,120,"1:00〜3:00","非常勤の夜勤（休憩2時間）"],["訪問介護","夕","16:00","21:00",0,0,"",""],["訪問介護","午前","09:00","12:00",0,0,"",""],["厨房","朝","05:30","09:00",0,0,"",""],["厨房","朝日","05:30","13:00",0,60,"09:00〜10:00",""],["厨房","早1","09:00","13:00",0,0,"",""],["厨房","早2","09:00","14:00",0,0,"",""],["厨房","遅1","10:00","15:00",0,0,"",""],["厨房","遅2","11:00","15:00",0,0,"",""],["厨房","日夜","11:00","18:30",0,60,"14:00〜15:00",""],["厨房","夜","15:00","18:30",0,0,"",""],["ドライバー","朝","08:00","10:00",0,0,"","朝の送迎"],["ドライバー","夕","16:00","18:00",0,0,"","夕の送迎"],["ドライバー","朝夕","08:00","18:00",0,360,"10:00〜16:00","朝（8:00〜10:00）＋夕（16:00〜18:00）。実働4時間"],["機能訓練士","機2","13:30","15:30",0,0,"",""]]; // [区分, 記号, 開始, 終了, 翌日(1/0), 休憩(分), 休憩の時間枠, 備考]
-const PAIDLEAVE_CAT="時給の有休（実働時間）", PAIDLEAVE_HOURS=[1.5,2,3.5,4,4.5,5,5.5,6,6.25,6.5,6.75,7,7.25,7.5,7.75,8,8.25,8.5,8.75]; // 時給者の有休：スタッフ台帳の実働時間ごとの行（時間は「実働」の欄で直せる）
+const SHIFTTBL_SEED=[["常勤","日勤A","08:30","17:30",0,60,"12:00〜13:00","非常勤のA9と同じ時間","J01"],["常勤","日勤B","09:00","18:00",0,60,"12:00〜13:00","非常勤のB9と同じ時間","J02"],["常勤","早看","06:00","15:00",0,60,"10:00〜11:00","看護の早番","J03"],["常勤","遅看","13:00","22:00",0,60,"17:00〜18:00","看護の遅番","J04"],["常勤","早介","07:00","16:00",0,60,"","訪問介護の早番","J05"],["常勤","遅介","12:00","21:00",0,60,"","訪問介護の遅番","J06"],["常勤","夜","21:00","07:00",1,120,"1:00〜3:00","休憩2時間","J07"],["常勤","AM休","08:30","12:30",0,0,"","非常勤のA4と同じ時間","J08"],["常勤","PM休","13:30","17:30",0,0,"","","J09"],["月給者・契約者の有休","有休","08:30","17:30",0,60,"12:00〜13:00","1日の有休（日勤Aと同じ時間）","Y01"],["月給者・契約者の有休","AM有","08:30","12:30",0,0,"","午前の有休","Y02"],["月給者・契約者の有休","PM有","13:30","17:30",0,0,"","午後の有休","Y03"],["時間給者の有休","有A4","08:30","12:30",0,0,"","A4の勤務時間の有休","Y04"],["時間給者の有休","有A4.5","08:30","13:00",0,0,"","A4.5の勤務時間の有休","Y05"],["時間給者の有休","有A5","08:30","13:30",0,0,"","A5の勤務時間の有休","Y06"],["時間給者の有休","有A5.5","08:30","14:00",0,0,"","A5.5の勤務時間の有休","Y07"],["時間給者の有休","有A6","08:30","14:30",0,30,"12:00〜12:30","A6の勤務時間の有休","Y08"],["時間給者の有休","有A6.5","08:30","15:00",0,30,"12:00〜12:30","A6.5の勤務時間の有休","Y09"],["時間給者の有休","有A7","08:30","15:30",0,45,"12:00〜12:45","A7の勤務時間の有休","Y10"],["時間給者の有休","有A7.5","08:30","16:00",0,45,"12:00〜12:45","A7.5の勤務時間の有休","Y11"],["時間給者の有休","有A8","08:30","16:30",0,45,"12:00〜12:45","A8の勤務時間の有休","Y12"],["時間給者の有休","有A8.5","08:30","17:00",0,45,"12:00〜12:45","A8.5の勤務時間の有休","Y13"],["時間給者の有休","有A9","08:30","17:30",0,45,"12:00〜12:45","A9の勤務時間の有休","Y14"],["時間給者の有休","有A9.5","08:30","18:00",0,45,"12:00〜12:45","A9.5の勤務時間の有休","Y15"],["時間給者の有休","有B3.5","09:00","12:30",0,0,"","B3.5の勤務時間の有休","Y16"],["時間給者の有休","有B4","09:00","13:00",0,0,"","B4の勤務時間の有休","Y17"],["時間給者の有休","有B4.5","09:00","13:30",0,0,"","B4.5の勤務時間の有休","Y18"],["時間給者の有休","有B5","09:00","14:00",0,0,"","B5の勤務時間の有休","Y19"],["時間給者の有休","有B5.5","09:00","14:30",0,0,"","B5.5の勤務時間の有休","Y20"],["時間給者の有休","有B6","09:00","15:00",0,30,"12:00〜12:30","B6の勤務時間の有休","Y21"],["時間給者の有休","有B6.5","09:00","15:30",0,30,"12:00〜12:30","B6.5の勤務時間の有休","Y22"],["時間給者の有休","有B7","09:00","16:00",0,45,"12:00〜12:45","B7の勤務時間の有休","Y23"],["時間給者の有休","有B7.5","09:00","16:30",0,45,"12:00〜12:45","B7.5の勤務時間の有休","Y24"],["時間給者の有休","有B8","09:00","17:00",0,45,"12:00〜12:45","B8の勤務時間の有休","Y25"],["時間給者の有休","有B8.5","09:00","17:30",0,45,"12:00〜12:45","B8.5の勤務時間の有休","Y26"],["時間給者の有休","有B9","09:00","18:00",0,45,"12:00〜12:45","B9の勤務時間の有休","Y27"],["時間給者の有休","有C6","08:30","14:30",0,0,"","C6の勤務時間の有休","Y28"],["時間給者の有休","有C6.5","08:30","15:00",0,0,"","C6.5の勤務時間の有休","Y29"],["時間給者の有休","有D6","09:00","15:00",0,0,"","D6の勤務時間の有休","Y30"],["時間給者の有休","有D6.5","09:00","15:30",0,0,"","D6.5の勤務時間の有休","Y31"],["時間給者の有休","有E7","08:30","15:30",0,60,"12:00〜13:00","E7の勤務時間の有休","Y32"],["時間給者の有休","有E7.5","08:30","16:00",0,60,"12:00〜13:00","E7.5の勤務時間の有休","Y33"],["時間給者の有休","有E8","08:30","16:30",0,60,"12:00〜13:00","E8の勤務時間の有休","Y34"],["時間給者の有休","有E8.5","08:30","17:00",0,60,"12:00〜13:00","E8.5の勤務時間の有休","Y35"],["時間給者の有休","有E9","08:30","17:30",0,60,"12:00〜13:00","E9の勤務時間の有休","Y36"],["時間給者の有休","有E9.5","08:30","18:00",0,60,"12:00〜13:00","E9.5の勤務時間の有休","Y37"],["時間給者の有休","有F7","09:00","16:00",0,60,"12:00〜13:00","F7の勤務時間の有休","Y38"],["時間給者の有休","有F7.5","09:00","16:30",0,60,"12:00〜13:00","F7.5の勤務時間の有休","Y39"],["時間給者の有休","有F8","09:00","17:00",0,60,"12:00〜13:00","F8の勤務時間の有休","Y40"],["時間給者の有休","有F8.5","09:00","17:30",0,60,"12:00〜13:00","F8.5の勤務時間の有休","Y41"],["時間給者の有休","有F9","09:00","18:00",0,60,"12:00〜13:00","F9の勤務時間の有休","Y42"],["非常勤（6時間未満）","A4","08:30","12:30",0,0,"","6時間未満は休憩なし","A01"],["非常勤（6時間未満）","A4.5","08:30","13:00",0,0,"","6時間未満は休憩なし","A02"],["非常勤（6時間未満）","A5","08:30","13:30",0,0,"","6時間未満は休憩なし","A03"],["非常勤（6時間未満）","A5.5","08:30","14:00",0,0,"","6時間未満は休憩なし","A04"],["非常勤（休憩あり）","A6","08:30","14:30",0,30,"12:00〜12:30","6時間は休憩30分","A05"],["非常勤（休憩あり）","A6.5","08:30","15:00",0,30,"12:00〜12:30","6.5時間は30分（仮）","A06"],["非常勤（休憩45分）","A7","08:30","15:30",0,45,"12:00〜12:45","","A07"],["非常勤（休憩45分）","A7.5","08:30","16:00",0,45,"12:00〜12:45","","A08"],["非常勤（休憩45分）","A8","08:30","16:30",0,45,"12:00〜12:45","","A09"],["非常勤（休憩45分）","A8.5","08:30","17:00",0,45,"12:00〜12:45","","A10"],["非常勤（休憩45分）","A9","08:30","17:30",0,45,"12:00〜12:45","","A11"],["非常勤（休憩45分）","A9.5","08:30","18:00",0,45,"12:00〜12:45","","A12"],["非常勤（6時間未満）","B3.5","09:00","12:30",0,0,"","6時間未満は休憩なし","B01"],["非常勤（6時間未満）","B4","09:00","13:00",0,0,"","6時間未満は休憩なし","B02"],["非常勤（6時間未満）","B4.5","09:00","13:30",0,0,"","6時間未満は休憩なし","B03"],["非常勤（6時間未満）","B5","09:00","14:00",0,0,"","6時間未満は休憩なし","B04"],["非常勤（6時間未満）","B5.5","09:00","14:30",0,0,"","6時間未満は休憩なし","B05"],["非常勤（休憩あり）","B6","09:00","15:00",0,30,"12:00〜12:30","6時間は休憩30分","B06"],["非常勤（休憩あり）","B6.5","09:00","15:30",0,30,"12:00〜12:30","6.5時間は30分（仮）","B07"],["非常勤（休憩45分）","B7","09:00","16:00",0,45,"12:00〜12:45","","B08"],["非常勤（休憩45分）","B7.5","09:00","16:30",0,45,"12:00〜12:45","","B09"],["非常勤（休憩45分）","B8","09:00","17:00",0,45,"12:00〜12:45","","B10"],["非常勤（休憩45分）","B8.5","09:00","17:30",0,45,"12:00〜12:45","","B11"],["非常勤（休憩45分）","B9","09:00","18:00",0,45,"12:00〜12:45","","B12"],["非常勤（休憩なし）","C6","08:30","14:30",0,0,"","6時間で休憩なし","C01"],["非常勤（休憩なし）","C6.5","08:30","15:00",0,0,"","6.5時間で休憩なし","C02"],["非常勤（休憩なし）","D6","09:00","15:00",0,0,"","6時間で休憩なし","D01"],["非常勤（休憩なし）","D6.5","09:00","15:30",0,0,"","6.5時間で休憩なし","D02"],["非常勤（休憩1時間）","E7","08:30","15:30",0,60,"12:00〜13:00","","E01"],["非常勤（休憩1時間）","E7.5","08:30","16:00",0,60,"12:00〜13:00","","E02"],["非常勤（休憩1時間）","E8","08:30","16:30",0,60,"12:00〜13:00","","E03"],["非常勤（休憩1時間）","E8.5","08:30","17:00",0,60,"12:00〜13:00","","E04"],["非常勤（休憩1時間）","E9","08:30","17:30",0,60,"12:00〜13:00","","E05"],["非常勤（休憩1時間）","E9.5","08:30","18:00",0,60,"12:00〜13:00","","E06"],["非常勤（休憩1時間）","F7","09:00","16:00",0,60,"12:00〜13:00","","F01"],["非常勤（休憩1時間）","F7.5","09:00","16:30",0,60,"12:00〜13:00","","F02"],["非常勤（休憩1時間）","F8","09:00","17:00",0,60,"12:00〜13:00","","F03"],["非常勤（休憩1時間）","F8.5","09:00","17:30",0,60,"12:00〜13:00","","F04"],["非常勤（休憩1時間）","F9","09:00","18:00",0,60,"12:00〜13:00","","F05"],["非常勤（6時間未満）","G4","08:00","12:00",0,0,"","6時間未満は休憩なし",""],["非常勤（6時間未満）","G5","08:00","13:00",0,0,"","6時間未満は休憩なし",""],["非常勤（そのほか）","P1.5","14:00","15:30",0,0,"","","P01"],["非常勤（そのほか）","P2","10:00","12:00",0,0,"","","P02"],["非常勤（そのほか）","P4","10:00","14:00",0,0,"","","P03"],["非常勤（そのほか）","P9","12:00","21:00",0,60,"12:00〜13:00","","P04"],["非常勤（そのほか）","P10","21:00","07:00",1,120,"1:00〜3:00","非常勤の夜勤（休憩2時間）","P05"],["非常勤（そのほか）","P 0700-1700","07:00","17:00",0,120,"13:00〜15:00","休憩2時間","P06"],["訪問介護","夕","16:00","21:00",0,0,"","",""],["訪問介護","午前","09:00","12:00",0,0,"","",""],["厨房","朝","06:00","09:00",0,0,"","","K01"],["厨房","朝日","06:00","15:00",0,60,"12:00〜13:00","","K02"],["厨房","早","09:00","13:00",0,0,"","","K03"],["厨房","遅","11:00","15:00",0,0,"","","K04"],["厨房","日","09:00","15:00",0,0,"","","K05"],["厨房","日夜","09:00","18:00",0,60,"12:00〜13:00","","K06"],["厨房","夜","15:00","18:00",0,0,"","","K07"],["厨房","AM栄","05:30","09:30",0,0,"","月給・契約の半日（午前に勤務）",""],["厨房","PM栄","14:30","18:30",0,0,"","月給・契約の半日（午後に勤務）",""],["ドライバー","朝","08:00","10:00",0,0,"","朝の送迎","R01"],["ドライバー","夕","16:00","18:00",0,0,"","夕の送迎","R02"],["ドライバー","朝夕","08:00","18:00",0,360,"10:00〜16:00","朝（8:00〜10:00）＋夕（16:00〜18:00）。実働4時間","R03"],["機能訓練士","機PM 1330-1530","13:30","15:30",0,0,"","","T01"]]; // [区分, 記号, 開始, 終了, 翌日(1/0), 休憩(分), 休憩の時間枠, 備考, パターンコード]（勤務時間設定一覧_新コード案.csv）
+const PAID_HR_CAT="時間給者の有休", PAID_MO_CAT="月給者・契約者の有休"; // 有休のパターン（勤務時間設定一覧）。時給は「有」＋勤務の記号（例：有B6）、月給・契約は「有休」
+const SHIFTTBL_OLDCATS=["常勤（栄養士）","常勤の有休","時給の有休（実働時間）"]; // この区分が残っている古い一覧は、新しい一覧に入れ替える
 const slotSplit=v=>{ const m=/(\d{1,2}:\d{2})〜(\d{1,2}:\d{2})/.exec(v||""); return m?[m[1],m[2]]:["",""]; }; // 「12:00〜13:00」→ 休憩開始予定・休憩終了予定
-const shiftTblSeed=()=>SHIFTTBL_SEED.map(a=>({id:uid(),cat:a[0],code:a[1],s:a[2],e:a[3],nx:a[4],brk:a[5],bs:slotSplit(a[6])[0],be:slotSplit(a[6])[1],note:a[7]})).concat(PAIDLEAVE_HOURS.map(h=>({id:uid(),cat:PAIDLEAVE_CAT,code:"有"+fmtH(h),s:"",e:"",nx:0,brk:0,bs:"",be:"",note:"実働"+fmtH(h)+"時間の人が有休を取ったときの時間",h})));
-function shiftTblLoad(){ let r=jget(SHIFTTBL_KEY,null); if(!Array.isArray(r)){ r=shiftTblSeed(); }
-  r.forEach(x=>{ if(x.bs===undefined&&x.be===undefined){ const a=slotSplit(x.slot); x.bs=a[0]; x.be=a[1]; } x.bs=normHM(x.bs); x.be=normHM(x.be); delete x.slot; }); return r; } // 時刻の入力欄は「01:00」の形。以前の「休憩の時間枠」は、休憩開始予定・休憩終了予定に分ける
+// パターンコード＝KOTの「パターン設定」に登録するコード（勤務時間設定一覧の「パターンコード」。KOT用CSVの書き出しで使う）
+const shiftTblSeed=()=>SHIFTTBL_SEED.map(a=>({id:uid(),cat:a[0],code:a[1],pc:a[8]||"",s:a[2],e:a[3],nx:a[4],brk:a[5],bs:slotSplit(a[6])[0],be:slotSplit(a[6])[1],note:a[7]}));
+function shiftTblLoad(){ let r=jget(SHIFTTBL_KEY,null); if(!Array.isArray(r)||r.some(x=>SHIFTTBL_OLDCATS.includes(x.cat))){ r=shiftTblSeed(); jset(SHIFTTBL_KEY,r); }
+  r.forEach(x=>{ if(x.pc===undefined)x.pc=""; if(x.bs===undefined&&x.be===undefined){ const a=slotSplit(x.slot); x.bs=a[0]; x.be=a[1]; } x.bs=normHM(x.bs); x.be=normHM(x.be); delete x.slot; }); return r; } // 時刻の入力欄は「01:00」の形。以前の「休憩の時間枠」は、休憩開始予定・休憩終了予定に分ける
 let shiftTbl=null;
 const shiftTblSave=()=>jset(SHIFTTBL_KEY,shiftTbl);
 const hmToMin=v=>{const m=/^(\d{1,2}):(\d{2})$/.exec(v||"");return m?Number(m[1])*60+Number(m[2]):null;};
@@ -3099,6 +3123,7 @@ function renderShiftTbl(){
     rows+=`<tr data-i="${i}" style="border-top:1px solid var(--line)">
       <td style="padding:5px 6px">${inp("st-cat",r.cat,150)}</td>
       <td style="padding:5px 6px">${inp("st-code",r.code,110)}</td>
+      <td style="padding:5px 6px">${inp("st-pc",r.pc,90)}</td>
       <td style="padding:5px 6px">${tin("st-s",r.s)}</td>
       <td style="padding:5px 6px">${tin("st-e",r.e)}</td>
       <td style="padding:5px 6px"><select class="st-nx" style="${fld}"><option value="0"${r.nx?"":" selected"}>当日</option><option value="1"${r.nx?" selected":""}>翌日</option></select></td>
@@ -3110,12 +3135,12 @@ function renderShiftTbl(){
       <td style="padding:5px 6px">${inp("st-note",r.note,200)}</td>
       <td style="padding:5px 6px;white-space:nowrap"><button class="btn sm st-up" title="1つ上へ" style="border-color:var(--line)">▲</button> <button class="btn sm st-dn" title="1つ下へ" style="border-color:var(--line)">▼</button> <button class="btn sm st-del" title="削除" style="border-color:var(--line)">🗑</button></td></tr>`; });
   const th=(l,al)=>`<th style="padding:5px 6px${al?";text-align:"+al:""}">${l}</th>`;
-  $("#stTable").innerHTML=`<thead><tr style="text-align:left;color:var(--ink-soft);font-size:12px;white-space:nowrap">${th("区分")}${th("記号")}${th("開始")}${th("終了")}${th("終了の日")}${th("拘束（時間）","right")}${th("休憩（分）")}${th("休憩開始予定")}${th("休憩終了予定")}${th("実働（時間）","right")}${th("備考")}<th></th></tr></thead><tbody>${rows||'<tr><td colspan="12" style="padding:14px;color:var(--ink-soft)">該当する行がありません</td></tr>'}</tbody>`;
+  $("#stTable").innerHTML=`<thead><tr style="text-align:left;color:var(--ink-soft);font-size:12px;white-space:nowrap">${th("区分")}${th("記号")}${th("パターンコード")}${th("開始")}${th("終了")}${th("終了の日")}${th("拘束（時間）","right")}${th("休憩（分）")}${th("休憩開始予定")}${th("休憩終了予定")}${th("実働（時間）","right")}${th("備考")}<th></th></tr></thead><tbody>${rows||'<tr><td colspan="13" style="padding:14px;color:var(--ink-soft)">該当する行がありません</td></tr>'}</tbody>`;
   $("#stCount").textContent=`${n}行`;
   $$("#stTable tbody tr[data-i]").forEach(tr=>{ const r=shiftTbl[Number(tr.dataset.i)];
     const upd=()=>{ shiftTblSave(); const c=shiftTblCalc(r); tr.querySelector(".st-kosoku").textContent=c?fmtH(c.kosoku):""; if(!tr.querySelector(".st-h"))tr.querySelector(".st-jitsu").textContent=c?fmtH(c.jitsu):""; };
     const bind=(cls,fn)=>{const el=tr.querySelector("."+cls); el.oninput=el.onchange=e=>{fn(e.target.value); upd();};};
-    bind("st-cat",v=>{r.cat=v;}); bind("st-code",v=>{r.code=v;}); bind("st-s",v=>{r.s=v;});
+    bind("st-cat",v=>{r.cat=v;}); bind("st-code",v=>{r.code=v;}); bind("st-pc",v=>{r.pc=v.trim();}); bind("st-s",v=>{r.s=v;});
     bind("st-e",v=>{r.e=v; const a=hmToMin(r.s), b=hmToMin(v); if(a!=null&&b!=null){ r.nx=b<=a?1:0; tr.querySelector(".st-nx").value=String(r.nx); }});
     bind("st-nx",v=>{r.nx=Number(v);}); if(tr.querySelector(".st-h"))bind("st-h",v=>{r.h=Math.max(0,Number(v)||0);}); bind("st-brk",v=>{r.brk=Math.max(0,Number(v)||0);}); bind("st-bs",v=>{r.bs=v;}); bind("st-be",v=>{r.be=v;}); bind("st-note",v=>{r.note=v;});
     tr.querySelector(".st-cat").addEventListener("change",()=>renderShiftTbl());
@@ -3126,10 +3151,10 @@ function renderShiftTbl(){
     tr.querySelector(".st-del").onclick=()=>showConfirm(`「${r.code||"(記号なし)"}」の行を削除しますか？`,()=>{shiftTbl=shiftTbl.filter(x=>x!==r);shiftTblSave();renderShiftTbl();});
   });
 }
-$("#stAdd").onclick=()=>{ if(!shiftTbl)shiftTbl=shiftTblLoad(); shiftTbl.push({id:uid(),cat:$("#stCat").value||"常勤",code:"",s:"",e:"",nx:0,brk:0,bs:"",be:"",note:""}); shiftTblSave(); renderShiftTbl(); const rows=document.querySelectorAll("#stTable tbody tr[data-i]"), last=rows[rows.length-1]; if(last){last.scrollIntoView({block:"center"}); const c=last.querySelector(".st-code"); if(c)c.focus();} };
+$("#stAdd").onclick=()=>{ if(!shiftTbl)shiftTbl=shiftTblLoad(); shiftTbl.push({id:uid(),cat:$("#stCat").value||"常勤",code:"",pc:"",s:"",e:"",nx:0,brk:0,bs:"",be:"",note:""}); shiftTblSave(); renderShiftTbl(); const rows=document.querySelectorAll("#stTable tbody tr[data-i]"), last=rows[rows.length-1]; if(last){last.scrollIntoView({block:"center"}); const c=last.querySelector(".st-code"); if(c)c.focus();} };
 $("#stReset").onclick=()=>showConfirm("勤務時間設定一覧を、標準の内容に戻します。いまの修正は消えます。よろしいですか？",()=>{shiftTbl=shiftTblSeed();shiftTblSave();renderShiftTbl();});
 $("#stCsv").onclick=()=>{ const q=v=>{v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}; const f=v=>{const m=hmToMin(v);return m==null?"":Math.floor(m/60)+":"+String(m%60).padStart(2,"0");};
-  const lines=[["区分","記号","開始","終了","終了の日","拘束時間（時間）","休憩（分）","休憩開始予定","休憩終了予定","実働時間（時間）","備考"]].concat((shiftTbl||shiftTblLoad()).map(r=>{const c=shiftTblCalc(r); return [r.cat,r.code,f(r.s),f(r.e),c?(r.nx?"翌日":"当日"):"",c?fmtH(c.kosoku):"",c?(r.brk||0):"",f(r.bs),f(r.be),c?fmtH(c.jitsu):"",r.note];}));
+  const lines=[["区分","記号","パターンコード","開始","終了","終了の日","拘束時間（時間）","休憩（分）","休憩開始予定","休憩終了予定","実働時間（時間）","備考"]].concat((shiftTbl||shiftTblLoad()).map(r=>{const c=shiftTblCalc(r); return [r.cat,r.code,r.pc||"",f(r.s),f(r.e),c?(r.nx?"翌日":"当日"):"",c?fmtH(c.kosoku):"",c?(r.brk||0):"",f(r.bs),f(r.be),c?fmtH(c.jitsu):"",r.note];}));
   const blob=new Blob(["﻿"+lines.map(l=>l.map(q).join(",")).join("\r\n")+"\r\n"],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="勤務時間設定一覧.csv"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); };
 $("#stgShiftTbl").onclick=()=>{ if(ROLE!=="admin")return; shiftTbl=null; renderShiftTbl(); openModal("#shiftTblOverlay"); };
 
@@ -3141,25 +3166,35 @@ const kotSlot=r=>{ const a=normHM(r&&r.bs), b=normHM(r&&r.be); return (a&&b&&Num
 function kotTimes(f,s,code,half,tm,shiftTimes){
   if(!code)return null;
   const kov=c=>{ const kt=(shiftTimes||{})[c]; return (f==="kitchen"&&kt&&kt.s&&kt.e)?kt:null; }; // 栄養士・厨房：出勤人数・休業日設定で変えた勤務の時間
+  if(f==="kitchen")code=({"早1":"早","早2":"早","遅1":"遅","遅2":"遅"})[code]||code; // 以前の「早1・早2・遅1・遅2」は、「早」「遅」として書き出す
   if(code==="応")code="日"; // 応援の日は、KOTでは、所属の部署の通常の1日勤務（日勤）として書き出す。応援先の行は、書き出さない
   const stt=statusByCode(code);
-  const mk=(r,over,noBreak)=>{ if(!r)return {err:"勤務時間設定一覧に、記号がありません"}; const [bs,be]=noBreak?["",""]:kotSlot(r); return {st:normHM(over&&over.s||r.s),en:normHM(over&&over.e||r.e),bs,be}; };
+  const mk=(r,over,noBreak)=>{ if(!r)return {err:"勤務時間設定一覧に、記号がありません"}; const [bs,be]=noBreak?["",""]:kotSlot(r); const st=normHM(over&&over.s||r.s), en=normHM(over&&over.e||r.e); return {st,en,bs,be,pc:(st===normHM(r.s)&&en===normHM(r.e))?(r.pc||""):""}; }; // パターンコード：時間を変えた日は、パターンと時間が合わないため、空にする
   if(stt&&!stt.work){ // 休み。半日の休み（AM休＝午前を休む）は、勤務する側だけを出す
-    if(half==="am")return f==="kitchen"?mk(kotRowOf("PM栄",c=>c==="常勤（栄養士）"),kov("PM栄"),true):mk(kotRowOf("PM休",c=>c==="常勤"),null,true);
-    if(half==="pm")return f==="kitchen"?mk(kotRowOf("AM栄",c=>c==="常勤（栄養士）"),kov("AM栄"),true):mk(kotRowOf("AM休",c=>c==="常勤"),null,true);
+    if(half==="am")return f==="kitchen"?mk(kotRowOf("PM栄",c=>c==="厨房"),kov("PM栄"),true):mk(kotRowOf("PM休",c=>c==="常勤"),(typeName(s)==="契約"&&tm&&tm.s&&tm.e)?tm:null,true);
+    if(half==="pm")return f==="kitchen"?mk(kotRowOf("AM栄",c=>c==="厨房"),kov("AM栄"),true):mk(kotRowOf("AM休",c=>c==="常勤"),(typeName(s)==="契約"&&tm&&tm.s&&tm.e)?tm:null,true);
     return null; }
   if(f!=="kitchen"&&(code==="朝"||code==="夕"||code==="朝夕"))return mk(kotRowOf(code,c=>c==="ドライバー"));
   if(f==="day"&&s.job==="drv"&&["日","出"].includes(code)){ const sym=partSymbolOf(s); return sym?mk(kotRowOf(sym,c=>c==="ドライバー")):{err:"ドライバーの勤務時間帯（朝夕・朝のみ・夕のみ）が未設定です"}; } // ドライバー：台帳で選んだ朝夕・朝のみ・夕のみ
-  const isPart=isPartTimeType(typeById(s.typeId)), w0=s.workTime;
+  const isPart=hasOwnTime(s), w0=s.workTime;
   if((f!=="kitchen"||kitIsHourly(s))&&isPart&&["日","出","夜"].includes(code)&&w0&&w0.s&&w0.e){ // 非常勤：台帳の勤務時間（その日だけの時間変更を含む）から記号を決め、一覧の休憩を使う
     const w={s:(tm&&tm.s)||w0.s,e:(tm&&tm.e)||w0.e}, sym=partSymbolOf(staffOfDay(s,tm)), r=sym&&kotRowOf(sym,c=>/^非常勤/.test(c));
     return r?mk(r,w):{st:normHM(w.s),en:normHM(w.e),bs:"",be:""}; }
   if((f!=="kitchen"||kitIsHourly(s))&&isPart&&["日","出"].includes(code))return {err:"非常勤の勤務時間が未設定です"};
-  if(f==="kitchen"&&["早","日","遅"].includes(code))return mk(kotRowOf(code,c=>c==="常勤（栄養士）"),kov(code==="日"?"日F":code)); // 月給・契約の勤務（設定で変えた時間があれば、その時間）
-  if(f==="kitchen"&&["朝","朝日","早1","早2","遅1","遅2","日夜","夜"].includes(code))return mk(kotRowOf(code,c=>c==="厨房"),kov(code));
+  if(f==="kitchen"&&["早","日","遅"].includes(code))return mk(kotRowOf(code,c=>c==="厨房"),kov(code==="日"?"日F":code)); // 月給・契約の勤務（設定で変えた時間があれば、その時間）
+  if(f==="kitchen"&&["朝","朝日","日夜","夜"].includes(code))return mk(kotRowOf(code,c=>c==="厨房"),kov(code));
   if(code==="日"||code==="出")return mk(kotRowOf((s.dayStart==="09:00"&&(f==="home"||f==="nursing"))?"日勤B":"日勤A",c=>c==="常勤") /* 日勤の開始時間を選べるのは、訪問介護と看護だけ。ほかの部署は8:30（日勤A） */);
   if(code==="早"||code==="遅"||code==="夜"){ const mt=(shiftTimes||{})[code]; return mk((code!=="夜"&&(f==="home"||f==="nursing")&&kotRowOf(code+(f==="home"?"介":"看"),c=>c==="常勤"))||kotRowOf(code,c=>c==="常勤"),mt&&mt.s&&mt.e?mt:null); } // 早番・遅番は、訪問介護が「早介・遅介」、看護が「早看・遅看」の行（なければ従来の「早・遅」）
   return {err:`記号「${code}」は、KOT用の時間が決まっていません`}; }
+// KOTの休暇区分の名前（公休・希望休＝「公休」、有休＝「有休」）。半休種別は、KOTに設定がないため出さない
+const KOT_LEAVE={off:"公休",paid:"有休"};
+const kotLeaveOf=(code,half)=>{ if(!code||half)return ""; const st=statusByCode(code); if(!st||st.work)return ""; if(isPaidSt(st))return KOT_LEAVE.paid; if(isWishStatus(st)||st.code==="公"||st.code===(closedStatus()||{}).code)return KOT_LEAVE.off; return ""; };
+// 有休の日のパターン：台帳の勤務（時給は勤務の記号、月給・契約は日勤）に合わせた、勤務時間設定一覧の有休の行（時給＝「有B6」など、月給・契約＝「有休」）。なければ null
+function kotPaidRow(f,s){ const t=typeById(s.typeId), hourly=f==="kitchen"?kitIsHourly(s):/時給|非常勤/.test((t&&t.name)||"");
+  if(!hourly)return kotRowOf("有休",c=>c===PAID_MO_CAT);
+  const sym=partSymbolOf(s); return sym?kotRowOf("有"+sym,c=>c===PAID_HR_CAT):null; }
+const kotTm=(v,next)=>{ const m=hmToMin(v); return m==null?"":(next?"翌日 ":"当日 ")+Math.floor(m/60)+":"+String(m%60).padStart(2,"0"); }; // 出勤予定・退勤予定：「当日 8:30」「翌日 7:00」
+const kotBr=v=>{ const m=hmToMin(v); return m==null?"":Math.floor(m/60)+":"+String(m%60).padStart(2,"0"); }; // 休憩：「12:00」
 function kotBuild(ym,sel){
   const [Y,M]=ym.split("-").map(Number), nd=new Date(Y,M,0).getDate(), rows=[], depts=[], codeCnt={};
   const on=f=>!sel||sel.has(f); // 書き出す部署（チェックした部署）
@@ -3173,11 +3208,17 @@ function kotBuild(ym,sel){
     try{ staffListOf(f).forEach(s=>{
       const r=plan.r[s.id]; if(!r)return; info.staff++; const code=(s.kotCode||"").trim(); let missing=false;
       for(let d=1;d<=nd;d++){
-        const x=kotTimes(f,s,r[d]||"",((plan.h||{})[s.id]||{})[d]||"",((plan.t||{})[s.id]||{})[d]||null,shiftTimes);
-        if(!x)continue;
+        const half=((plan.h||{})[s.id]||{})[d]||"", x=kotTimes(f,s,r[d]||"",half,((plan.t||{})[s.id]||{})[d]||null,shiftTimes);
+        const dstr=`${Y}/${String(M).padStart(2,"0")}/${String(d).padStart(2,"0")}`;
+        if(!x){ const lv=kotLeaveOf(r[d]||"",half); if(!lv)continue; if(!code){ missing=true; continue; } // 1日休み：公休・希望休・有休は、予定の時間を空にして、全日休暇の名前だけを出す
+          const pr=(lv===KOT_LEAVE.paid&&!half)?kotPaidRow(f,s):null, pn=pr?(pr.pc||""):"";
+          if(lv===KOT_LEAVE.paid&&!pr)info.errs.push(`${s.name} ${M}/${d}：有休のパターンが、勤務時間設定一覧にありません（台帳の勤務時間・休憩を確認）`);
+          if(pr){ const a=hmToMin(pr.s), b=hmToMin(pr.e), nx=(a!=null&&b!=null&&b<=a), [bs,be]=kotSlot(pr); rows.push({d,f,line:[dstr,code,pn,kotTm(normHM(pr.s),false),kotTm(normHM(pr.e),nx),kotBr(bs),kotBr(be),pn,lv,""]}); }
+          else rows.push({d,f,line:[dstr,code,"","","","","","",lv,""]}); info.lines++; continue; }
         if(x.err){ info.errs.push(`${s.name} ${M}/${d}：${x.err}`); continue; }
         if(!code){ missing=true; continue; }
-        rows.push({d,f,line:[`${Y}/${String(M).padStart(2,"0")}/${String(d).padStart(2,"0")}`,code,x.st,x.en,x.bs,x.be]}); info.lines++; }
+        const a=hmToMin(x.st), b=hmToMin(x.en), nx=(a!=null&&b!=null&&b<=a);
+        rows.push({d,f,line:[dstr,code,x.pc||"",kotTm(x.st,false),kotTm(x.en,nx),kotBr(x.bs),kotBr(x.be),x.pc||"","",""]}); info.lines++; } // 時間帯区分コードは、パターンコードと同じ（KOTの時間帯区分に、パターンコードと同じコードで登録）
       if(missing)info.noCode.push(s.name); }); }
     finally{ TYPES_OVERRIDE=null; EXP_F=null; } });
   rows.sort((a,b)=>a.d-b.d||ALL_FACILITIES.indexOf(a.f)-ALL_FACILITIES.indexOf(b.f));
@@ -3196,7 +3237,7 @@ $("#kotMonth").onchange=renderKot;
 $("#kotAll").onclick=()=>{ kotSel=new Set(kotRealDepts()); renderKot(); };
 $("#kotNone").onclick=()=>{ kotSel=new Set(); renderKot(); };
 $("#kotGo").onclick=()=>{ if(!kotCur||!kotCur.rows.length)return; const q=v=>{v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
-  const lines=($("#kotHead").checked?[["勤務日","従業員コード","勤務開始時刻","勤務終了時刻","休憩開始予定","休憩終了予定"]]:[]).concat(kotCur.rows);
+  const lines=($("#kotHead").checked?[["#勤務日","従業員コード","パターンコード","出勤予定","退勤予定","休憩開始予定","休憩終了予定","時間帯区分コード","全日休暇","半休種別名称"]]:[]).concat(kotCur.rows);
   const blob=new Blob(["﻿"+lines.map(l=>l.map(q).join(",")).join("\r\n")+"\r\n"],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); { const sl=[...(kotSel||[])], real=kotRealDepts(); const suffix=sl.length===1?"_"+FACILITY_NAME[sl[0]]:(sl.length===real.length&&real.every(f=>kotSel.has(f)))?"":"_選択部署"; a.download=`KOT取込用_${$("#kotMonth").value}${suffix}.csv`; } document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); };
 
 // ---- 管理者：データのバックアップと復元（全部署の保存データを1つのファイルに） ----
