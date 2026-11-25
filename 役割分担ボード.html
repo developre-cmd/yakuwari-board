@@ -1373,7 +1373,7 @@ function loadMasters(){
     seeded=false;
   }
   // migrate: ensure typeId / hours / task duration
-  S.staff.forEach(s=>{if(!s.typeId)s.typeId=S.types[0].id; if(s.off===undefined)s.off=null; if(s.hours===undefined)s.hours=null; if(FSCOPE==="day"&&s.hours&&!s.job)s.job="drv"; if(FSCOPE==="day"&&s.job==="drv"){const pt=hourlyType(); if(pt)s.typeId=pt.id; s.workTime=null;} if(FSCOPE!=="day"&&s.hours)s.hours=null; if(s.job===undefined)s.job=""; if(s.canHiace===undefined)s.canHiace=false; if(s.canNight===undefined)s.canNight=false; if(s.nightOnly===undefined)s.nightOnly=false; if(s.nightCount===undefined)s.nightCount=null; if(s.workDays===undefined)s.workDays=null; if(s.canDrive===undefined){s.canDrive=(s.job==="driver"); if(s.job==="driver")s.job="";}});
+  S.staff.forEach(s=>{if(!s.typeId)s.typeId=S.types[0].id; if(s.off===undefined)s.off=null; if(s.hours===undefined)s.hours=null; if(FSCOPE==="day"&&s.hours&&!s.job)s.job="drv"; if(FSCOPE==="day"&&s.job==="drv"){const pt=hourlyType(); if(pt)s.typeId=pt.id; s.workTime=null;} if(FSCOPE!=="day"&&s.hours)s.hours=null; if(s.job===undefined)s.job=""; if(s.canHiace===undefined)s.canHiace=false; if(s.monthDays===undefined)s.monthDays=null; if(s.canNight===undefined)s.canNight=false; if(s.nightOnly===undefined)s.nightOnly=false; if(s.nightCount===undefined)s.nightCount=null; if(s.workDays===undefined)s.workDays=null; if(s.canDrive===undefined){s.canDrive=(s.job==="driver"); if(s.job==="driver")s.job="";}});
   sortStaffByJob(); // デイサービス：職種ごとにまとめる
   S.tasks.forEach(t=>{if(!t.dur)t.dur=30;});
   saveStaff();jset(K.status,S.status);jset(K.times,S.times);jset(K.tasks,S.tasks);jset(K.types,S.types);jset(K.roles,S.roles);
@@ -2109,7 +2109,8 @@ function renderStaffList(){
       <div class="line2">
         <div class="fl" style="flex:1"><span>勤務できる曜日</span>
           <div class="seg wdseg">${DOW.map((w,i)=>`<button class="segbtn" data-wd="${i}" aria-pressed="${!s.workDays||s.workDays.includes(i)}">${w}</button>`).join("")}${holidaySetOn(s)?`<button class="segbtn" data-hol="1" title="祝日・祭日に出勤できる" aria-pressed="${holidayOkOf(s)}">祝</button>`:""}</div></div>
-      </div>`:""}
+      </div>${(typeName(s)==="時給"&&!isDrv)?`<div class="line2"><label class="wk" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px">月の出勤日数（扶養内など）
+          <input type="number" class="month-days" min="0" max="31" placeholder="指定なし" value="${s.monthDays==null?'':s.monthDays}" style="width:84px;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:8px;padding:5px 8px">日</label></div>`:""}`:""}
       ${(FSCOPE==="day"&&(s.job==="drv"||s.hours))?`<div class="line2">
         <div class="fl" style="flex:1"><span>勤務時間帯（ドライバー）</span><div class="seg hseg">${hbtns}</div></div>
       </div>`:""}
@@ -2131,6 +2132,7 @@ function renderStaffList(){
     const ksel=card.querySelector('.kit-sel'); if(ksel)ksel.onchange=e=>{ s.kPats=e.target.value.split('|'); s.kPat=s.kPats[0]; saveStaff(); if(S.tab==='roster')renderRoster(); }; // 栄養士・厨房の月給・契約：入れる勤務を1つ選ぶ
     card.querySelectorAll('.kit-pats input').forEach(cb=>{ cb.onchange=()=>{ const sel=[...card.querySelectorAll('.kit-pats input:checked')].map(x=>x.dataset.pat); s.kPats=kitOptsOf(s).map(x=>x[0]).filter(c=>sel.includes(c)); s.kPat=s.kPats[0]||""; saveStaff(); if(S.tab==='roster')renderRoster(); }; }); // 栄養士・厨房：勤務の種類（チェックは、全部外してもよい）
     const rdc=card.querySelector('.rd-in'); if(rdc)rdc.onchange=e=>{s.rdQual=e.target.checked;saveStaff();renderStaffList();refreshAll();}; // 栄養士・厨房：管理栄養士の資格者
+    const mdi=card.querySelector('.month-days'); if(mdi)mdi.oninput=e=>{s.monthDays=e.target.value===''?null:Math.min(31,Math.max(0,Math.floor(Number(e.target.value))));saveStaff();}; // 時給：月に出勤する日数（扶養内など。空欄は指定なし）
     const ncnt=card.querySelector('.night-cnt');
     if(ncnt)ncnt.oninput=e=>{s.nightCount=e.target.value===''?null:Math.max(0,Number(e.target.value));saveStaff();};
     const dchk=card.querySelector('.drive-in');
@@ -2555,7 +2557,11 @@ $("#doAuto").onclick=()=>{
     const cand=[]; for(let d=1;d<=nd;d++){ if(!rr[d]&&!workDayOk(s,d))cand.push(d); }            // 非常勤の勤務できない曜日・祝日 → 公休
     const tg0=staffTarget(s); let use=cand;
     if(tg0!=null&&typeName(s)==="契約"){ let o=0; for(let d=1;d<=nd;d++){const c=rr[d],st=c&&statusByCode(c); if(st&&!st.work&&!isPaidSt(st))o+=st.half?0.5:1;} use=spread(cand,Math.max(0,Math.floor(tg0-o+1e-9))); } // 契約は、公休が規定の日数を超えないよう、勤務できない日の一部を出勤にする
-    use.forEach(d=>{rr[d]=rcode;setAuto(s.id,d,true);}); });
+    use.forEach(d=>{rr[d]=rcode;setAuto(s.id,d,true);});
+    if(typeName(s)==="時給"&&s.monthDays!=null&&s.monthDays!==""&&!(FSCOPE==="day"&&s.job==="drv")){ // 時給：月の出勤日数（扶養内など）を超えないよう、足りない分の空欄を公休にする（手入力の勤務は、その日数に数える）
+      const lim=Number(s.monthDays); let w=0; const blanks=[];
+      for(let d=1;d<=nd;d++){ const c=rr[d]; if(!c){blanks.push(d);continue;} if(c==="応")continue; const st=statusByCode(c); if(st&&st.work)w+=st.half?0.5:1; else if(st&&!isWishStatus(st)&&(S.rhalf[s.id]||{})[d])w+=0.5; }
+      const extra=blanks.length-Math.max(0,Math.floor(lim-w+1e-9)); if(extra>0)spread(blanks,extra).forEach(d=>{rr[d]=rcode;setAuto(s.id,d,true);}); } });
   const wOfCode=(c,s,d)=>{ if(c==="応")return 0; if(!c)return (s&&s.nightOnly)?0:1; const st=statusByCode(c); if(st&&!st.work&&!isWishStatus(st)&&s&&d&&(S.rhalf[s.id]||{})[d])return 0.5; return st?(st.half?0.5:(st.work?1:0)):1; }; // 空欄=出勤候補1・半日=0.5
   // 夜勤明け：夜勤の次の日は、休みにする（夜勤が続く場合は、最後の夜勤の次の日が休み）。夜勤明けの休みをなくす場合は false
   const NIGHT_AKE=true;
