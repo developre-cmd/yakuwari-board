@@ -1139,7 +1139,8 @@ const kitPatOf=s=>kitPatsOf(s)[0];
 // 栄養士・厨房の時給者：有休を取ったときの時間。台帳で選んだ勤務ごとに、勤務時間設定一覧の実働時間（休憩を引いた時間）で計算する
 const kitPaidHTML=s=>{ if(!kitIsHourly(s))return ""; const tb=shiftTblLoad(); const ls=kitPatsOf(s).map(c=>{ const row=tb.find(r=>r.code===c&&r.cat==="厨房"), cc=row&&shiftTblCalc(row), h=cc?cc.jitsu:null; if(h==null)return ""; const pr=tb.find(r=>r.cat===PAID_HR_CAT&&r.code==="有"+(c.startsWith("W:")?partSymbolOf(s):c)); return `<b>${escapeHtml(c.startsWith("W:")?"勤務時間":c)}</b> ${fmtH(h)}時間${pr?"（有休のパターン："+escapeHtml(pr.code)+"）":""}`; }).filter(Boolean);
   return ls.length?`<div class="line2 kit-paid"><div style="font-size:12px;color:var(--ink-soft)">有休を取ったときの時間（実働時間で計算）：${ls.join("　／　")}</div></div>`:""; };
-const kitDeficit=(d,codes)=>{ if(!kitWeekday(d))return 0; let t=0; kitBandsDay(d).forEach(b=>{ if(b.n<=0)return; for(let m=hmN(b.s);m<hmN(b.e);m+=30){ let c=0; codes.forEach(code=>{const r=code&&kitAdj(kitRange(code),b); if(r&&r[0]<=m&&r[1]>=m+30)c++;}); if(c<b.n)t+=b.n-c; } }); return t; };
+const kitEdgeBand=b=>hmN(b.s)<hmN("8:30")||hmN(b.e)>hmN("17:30"); // 朝早い時間帯（5:30〜）と、夕方遅くまでの時間帯（〜18:30）
+const kitDeficit=(d,codes,only)=>{ if(!kitWeekday(d))return 0; let t=0; kitBandsDay(d).forEach(b=>{ if(b.n<=0)return; if(only==="edge"&&!kitEdgeBand(b))return; if(only==="mid"&&kitEdgeBand(b))return; for(let m=hmN(b.s);m<hmN(b.e);m+=30){ let c=0; codes.forEach(code=>{const r=code&&kitAdj(kitRange(code),b); if(r&&r[0]<=m&&r[1]>=m+30)c++;}); if(c<b.n)t+=b.n-c; } }); return t; };
 // その日の、スタッフごとの勤務（記号）。手入力済みはそのまま。空欄は、台帳で選んだ勤務から、時間帯の人数が満たされるものを選ぶ（1つだけ選んだ人はその勤務）
 function kitAssignDay(d,exceptSid,cnt){
   const res={}, multi=[];
@@ -1147,7 +1148,9 @@ function kitAssignDay(d,exceptSid,cnt){
     if(c){res[s.id]=kitCodeOf(c,s)||kitHalfCode(s.id,d);return;} if(s.nightOnly){res[s.id]=null;return;}
     const ps=kitPatsOf(s); if(!ps.length)res[s.id]=null; else if(ps.length===1)res[s.id]=ps[0]; else multi.push(s); });
   multi.sort((x,y)=>kitPatsOf(x).length-kitPatsOf(y).length);
-  multi.forEach(s=>{ let best=null,bd=Infinity,bc=Infinity; kitPatsOf(s).forEach(pt=>{ res[s.id]=pt; const df=kitDeficit(d,Object.values(res)), c=(cnt&&cnt[s.id]&&cnt[s.id][pt])||0; if(df<bd||(df===bd&&c<bc)){best=pt;bd=df;bc=c;} }); res[s.id]=best; });
+  // 選ぶ順番：①5:30〜と〜18:30の時間帯の不足が少ない ②日中の時間帯の不足が少ない ③月給・契約は「日」より早・遅 ④その人の回数が少ない勤務
+  multi.forEach(s=>{ let best=null,bk=null; const hr=kitIsHourly(s); kitPatsOf(s).forEach(pt=>{ res[s.id]=pt; const v=Object.values(res), k=[kitDeficit(d,v,"edge"),kitDeficit(d,v,"mid"),(!hr&&pt==="日F")?1:0,(cnt&&cnt[s.id]&&cnt[s.id][pt])||0];
+    if(!bk||k.some((x,i)=>x!==bk[i]&&k.slice(0,i).every((y,j)=>y===bk[j])&&x<bk[i])){best=pt;bk=k;} }); res[s.id]=best; });
   return res; }
 const kitDayCodes=(d,exceptSid)=>{ const r=kitAssignDay(d,exceptSid,null); return S.staff.map(s=>r[s.id]); };
 const DRV_SYMS=[{code:"朝",label:"送迎・朝",color:"#3E7CB1"},{code:"夕",label:"送迎・夕",color:"#B5762E"},{code:"朝夕",label:"送迎・朝夕",color:"#6C5BB0"}];
@@ -3297,7 +3300,8 @@ function kotTimes(f,s,code,half,tm,shiftTimes){
     const w={s:(tm&&tm.s)||w0.s,e:(tm&&tm.e)||w0.e}, sym=partSymbolOf(staffOfDay(s,tm)), r=sym&&kotRowOf(sym,c=>/^非常勤/.test(c));
     return r?mk(r,w):{st:normHM(w.s),en:normHM(w.e),bs:"",be:""}; }
   if((f!=="kitchen"||kitIsHourly(s))&&isPart&&["日","出"].includes(code))return {err:"非常勤の勤務時間が未設定です"};
-  if(f==="kitchen"&&["早","日","遅"].includes(code))return mk(kotRowOf(code,c=>c==="厨房"),kov(code==="日"?"日F":code)); // 月給・契約の勤務（設定で変えた時間があれば、その時間）
+  if(f==="kitchen"&&code==="日")return mk(kotRowOf("日勤A",c=>c==="常勤"),kov("日F")); // 栄養士・厨房の月給・契約の「日」は、全体の日勤A（8:30〜17:30）
+  if(f==="kitchen"&&["早","遅"].includes(code))return mk(kotRowOf(code,c=>c==="厨房"),kov(code)); // 月給・契約の勤務（設定で変えた時間があれば、その時間）
   if(f==="kitchen"&&["朝","朝日","早1","早2","遅1","遅2","日夜","夜"].includes(code))return mk(kotRowOf(code,c=>c==="厨房"),kov(code));
   if(code==="日"||code==="出")return mk(kotRowOf((s.dayStart==="09:00"&&(f==="home"||f==="nursing"))?"日勤B":"日勤A",c=>c==="常勤") /* 日勤の開始時間を選べるのは、訪問介護と看護だけ。ほかの部署は8:30（日勤A） */);
   if(code==="早"||code==="遅"||code==="夜"){ const mt=(shiftTimes||{})[code]; return mk((code!=="夜"&&(f==="home"||f==="nursing")&&kotRowOf(code+(f==="home"?"介":"看"),c=>c==="常勤"))||kotRowOf(code,c=>c==="常勤"),mt&&mt.s&&mt.e?mt:null); } // 早番・遅番は、訪問介護が「早介・遅介」、看護が「早看・遅看」の行（なければ従来の「早・遅」）
