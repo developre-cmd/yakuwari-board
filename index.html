@@ -1121,7 +1121,8 @@ const kitTimeLabel=code=>{ const r=kitRange(code); const f=m=>Math.floor(m/60)+"
 const kitWeekday=d=>!isSetOff(d); // 休業日は、人数を求めない
 const kitBandsDay=d=>kitBandsOf(dow(S.ym,d)===0?"sun":"wk"); // その日の時間帯ごとの人数（日曜は日曜の設定、ほかは月〜土曜の設定。祝日は関係なし）
 const kitCodeOf=(c,st)=>{ if(c==="日"){ if(st&&kitIsHourly(st)&&kitRange("W:"+st.id))return "W:"+st.id; return "日F"; } if(c==="日F")return null; c=({"早契":"早","遅契":"遅"})[c]||c; return KIT_PATTERNS.some(x=>x[0]===c)?c:null; }; // 「日」：月給・契約は8:30〜17:30、時給は台帳の勤務時間（勤務表には、B6などの記号で出る）
-const kitBandMin=(codes,b)=>{ let mn=Infinity; for(let t=hmN(b.s);t<hmN(b.e);t+=30){ let c=0; codes.forEach(code=>{const r=code&&kitRange(code); if(r&&r[0]<=t&&r[1]>=t+30)c++;}); if(c<mn)mn=c; } return mn===Infinity?0:mn; }; // 30分ごとに数えて、いちばん少ない人数
+const kitAdj=(r,b)=>{ if(!r)return null; const bs=hmN(b.s), be=hmN(b.e); return [(r[0]>bs&&r[0]<=bs+30)?bs:r[0], (r[1]<be&&r[1]>=be-30)?be:r[1]]; }; // 時間帯の始まりから30分以内に入る人（例：遅 9:30〜 → 9:00〜13:00）、終わりの30分以内まで残る人も、その時間帯の人数に数える
+const kitBandMin=(codes,b)=>{ let mn=Infinity; for(let t=hmN(b.s);t<hmN(b.e);t+=30){ let c=0; codes.forEach(code=>{const r=code&&kitAdj(kitRange(code),b); if(r&&r[0]<=t&&r[1]>=t+30)c++;}); if(c<mn)mn=c; } return mn===Infinity?0:mn; }; // 30分ごとに数えて、いちばん少ない人数
 const KIT_FULL=["早","日F","遅"], KIT_HALFPATS=["AM栄","PM栄"], KIT_CONTRACT=[]; // 以前の契約だけの勤務（早契・遅契）は、月給・契約の「早」「遅」にまとめた
  // 月給・契約が入れる勤務（勤務時間設定一覧の「常勤（栄養士）」）。公休を2回続けてタップした半日は、常勤のAM休・PM休の時間で数える。時給は、朝・朝日・早1…から選ぶ
 const KIT_FULL_CHOICES=[["早|日F|遅","早・日・遅が可能"],["早|遅","早・遅が可能"],["早|日F","早・日が可能"],["日F|遅","日・遅が可能"],["早","早のみ可能"],["日F","日のみ可能"],["遅","遅のみ可能"]]; // 月給・契約：1つ選ぶ
@@ -1138,7 +1139,7 @@ const kitPatOf=s=>kitPatsOf(s)[0];
 // 栄養士・厨房の時給者：有休を取ったときの時間。台帳で選んだ勤務ごとに、勤務時間設定一覧の実働時間（休憩を引いた時間）で計算する
 const kitPaidHTML=s=>{ if(!kitIsHourly(s))return ""; const tb=shiftTblLoad(); const ls=kitPatsOf(s).map(c=>{ const row=tb.find(r=>r.code===c&&r.cat==="厨房"), cc=row&&shiftTblCalc(row), h=cc?cc.jitsu:null; if(h==null)return ""; const pr=tb.find(r=>r.cat===PAID_HR_CAT&&r.code==="有"+(c.startsWith("W:")?partSymbolOf(s):c)); return `<b>${escapeHtml(c.startsWith("W:")?"勤務時間":c)}</b> ${fmtH(h)}時間${pr?"（有休のパターン："+escapeHtml(pr.code)+"）":""}`; }).filter(Boolean);
   return ls.length?`<div class="line2 kit-paid"><div style="font-size:12px;color:var(--ink-soft)">有休を取ったときの時間（実働時間で計算）：${ls.join("　／　")}</div></div>`:""; };
-const kitDeficit=(d,codes)=>{ if(!kitWeekday(d))return 0; let t=0; kitBandsDay(d).forEach(b=>{ if(b.n<=0)return; for(let m=hmN(b.s);m<hmN(b.e);m+=30){ let c=0; codes.forEach(code=>{const r=code&&kitRange(code); if(r&&r[0]<=m&&r[1]>=m+30)c++;}); if(c<b.n)t+=b.n-c; } }); return t; };
+const kitDeficit=(d,codes)=>{ if(!kitWeekday(d))return 0; let t=0; kitBandsDay(d).forEach(b=>{ if(b.n<=0)return; for(let m=hmN(b.s);m<hmN(b.e);m+=30){ let c=0; codes.forEach(code=>{const r=code&&kitAdj(kitRange(code),b); if(r&&r[0]<=m&&r[1]>=m+30)c++;}); if(c<b.n)t+=b.n-c; } }); return t; };
 // その日の、スタッフごとの勤務（記号）。手入力済みはそのまま。空欄は、台帳で選んだ勤務から、時間帯の人数が満たされるものを選ぶ（1つだけ選んだ人はその勤務）
 function kitAssignDay(d,exceptSid,cnt){
   const res={}, multi=[];
