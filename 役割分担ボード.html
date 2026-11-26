@@ -3162,6 +3162,7 @@ function renderStaffSum(){
   cols.push(["勤務できる曜日",s=>escapeHtml(daysOf(s))]);
   cols.push([hasHome?"日勤の開始／勤務時間":"勤務時間",s=>escapeHtml(startOf(s))]);
   if(night)cols.push(["月の夜勤回数",s=>(s.canNight||s.nightOnly)?(s.nightCount==null?"指定なし":s.nightCount+"回"):"－"]);
+  if(list.some(s=>hasOwnTime(s)))cols.push(["休憩",s=>escapeHtml(breakTextOf(s))]);
   if(list.some(s=>typeName(s)==="時給"))cols.push(["月の出勤日数",s=>typeName(s)==="時給"?(s.monthDays==null?"指定なし":s.monthDays+"日"):"－"]);
   const th=l=>`<th style="padding:6px 8px;text-align:left;font-weight:700;white-space:nowrap">${l}</th>`;
   const body=list.map(s=>`<tr style="border-top:1px solid var(--line)">${cols.map(([,f],i)=>`<td style="padding:6px 8px;white-space:nowrap${i===0?";font-weight:700":""}"><span${i===0?` style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${escapeHtml(s.color||"#999")};margin-right:6px"`:' hidden'}></span>${f(s)}</td>`).join("")}</tr>`).join("");
@@ -3169,6 +3170,12 @@ function renderStaffSum(){
   box.innerHTML=head+(list.length?`<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:13px;width:100%"><thead><tr style="color:var(--ink-soft);font-size:12px">${cols.map(([l])=>th(l)).join("")}</tr></thead><tbody>${body}</tbody></table></div>`:'<p style="color:var(--ink-soft)">この部署には、まだスタッフがいません</p>')+`</div>`;
   $("#stSumPrint").onclick=()=>printStaffSum();
 }
+// 部署のまとめ：パートの休憩（勤務時間設定一覧の、その人の記号の行から。例：「45分」）
+function breakTextOf(s){ if(!hasOwnTime(s))return "－"; const d=partDurHours(s); if(d==null)return "未設定";
+  const kind=partBreakKind(s); if(kind==="yn"&&s.breakYes!==true&&s.breakYes!==false)return "未選択"; if(kind==="len"&&s.breakLong!==true&&s.breakLong!==false)return "未選択";
+  const code=partSymbolOf(s), row=code&&partTblRows(s).find(r=>r.code===code);
+  if(!row){ if(kind==="yn")return s.breakYes?"あり":"なし"; if(kind==="len")return s.breakLong?"60分":"45分"; return "なし"; }
+  const m=Number(row.brk)||0; if(!m)return "なし"; return `${m}分`; }
 function printStaffSum(){ // 部署のまとめを、別の画面で開いて印刷（PDFに保存もできる）
   const d=new Date(), ds=`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`, title=`スタッフ台帳 部署のまとめ（${FACILITY_NAME[FSCOPE]||""}）`;
   const w=window.open("","_blank"); if(!w){toast("印刷用の画面を開けませんでした（ポップアップを許可してください）");return;}
