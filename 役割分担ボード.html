@@ -245,6 +245,21 @@
   .hint{margin-top:10px;font-size:12px;color:var(--ink-faint);text-align:center}
 
   /* ---------- Roster (勤務表) ---------- */
+  .kit-guide{margin:10px 0 4px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);box-sizing:border-box}
+  .kit-guide .kg-cols{display:flex;flex-wrap:wrap;gap:6px 22px;align-items:flex-start}
+  .kit-guide .kg-col{flex:1 1 300px;min-width:0}
+  .kit-guide .kg-title{font-weight:700;font-size:12px;margin-bottom:2px}
+  .kit-guide .kg-grp{margin-top:4px}
+  .kit-guide .kg-h{font-size:10px;font-weight:700;color:var(--ink-soft);letter-spacing:.04em;margin-bottom:1px}
+  .kit-guide .kg-row{display:grid;grid-template-columns:30px 70px 1fr;align-items:center;gap:6px;min-height:16px}
+  .kit-guide .kg-sym{display:inline-grid;place-items:center;min-width:26px;height:14px;padding:0 3px;border-radius:3px;color:#fff;font-size:9px;font-weight:700}
+  .kit-guide .kg-time{font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .kit-guide .kg-track{position:relative;height:8px;border-radius:3px;background:var(--line);overflow:hidden}
+  .kit-guide .kg-band{position:absolute;top:0;bottom:0;background:var(--accent-soft, rgba(70,120,100,.18))}
+  .kit-guide .kg-bar{position:absolute;top:1px;bottom:1px;border-radius:2px}
+  .kit-guide .kg-ticks{background:none;height:11px;overflow:visible}
+  .kit-guide .kg-ticks span{position:absolute;transform:translateX(-50%);font-size:8px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .kit-guide .kg-note{margin-top:4px;font-size:9px;color:var(--ink-soft)}
   .brushbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
   .brushbar .lb{font-size:12px;color:var(--ink-soft);font-weight:700;letter-spacing:.04em;margin-right:2px}
   #brushes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -665,6 +680,7 @@
       </div>
       <div class="rtotal no-print" id="rtotal" hidden></div>
     </div>
+    <div class="kit-guide no-print" id="kitGuide" hidden></div>
     <p class="hint no-print" style="text-align:left">希望休を塗る →「休日数に合わせて自動作成」で、なるべく週2日休みになるよう不足分の公休を配置し残りを出勤に。右端の「休/目標」で過不足を確認できます。非常勤の勤務時間をその日だけ変える場合は、「時間変更」を選んでマスをタップして時間を入力します。半日の休みは、「公休」または「有休」を選んでマスを続けてタップします（1回目＝全日、2回目＝AM休／AM有、3回目＝PM休／PM有、4回目＝消す）。AM・PMは0.5日分として数えます。</p>
   </div>
 
@@ -1116,7 +1132,7 @@ const KIT_PATTERNS=[["朝","5:30〜9:00"],["朝日","5:30〜13:00"],["早1","9:0
 const KIT_BANDS=[{id:"b1",g:"wk",s:"5:30",e:"9:00",n:1},{id:"b2",g:"wk",s:"9:00",e:"13:00",n:2},{id:"b3",g:"wk",s:"15:00",e:"18:30",n:1},{id:"u1",g:"sun",s:"5:30",e:"9:00",n:1},{id:"u2",g:"sun",s:"9:00",e:"13:00",n:1},{id:"u3",g:"sun",s:"15:00",e:"18:30",n:1}]; // wk＝月〜土曜、sun＝日曜（祝日は関係なし）
 const kitBandsOf=g=>KIT_BANDS.filter(b=>!g||b.g===g).map(b=>({...b,n:((S.kband||{})[b.id]!==undefined)?(Number(S.kband[b.id])||0):b.n}));
 const hmN=v=>{const m=/^(\d{1,2}):(\d{2})$/.exec(v);return m?Number(m[1])*60+Number(m[2]):0;};
-const kitRange=code=>{ if(code==="H:am")return [hmN("8:30"),hmN("12:30")]; if(code==="H:pm")return [hmN("13:30"),hmN("17:30")]; /* 半日の休みの日の、勤務する側 */ if(typeof code==="string"&&code.startsWith("W:")){ const st=S.staff.find(x=>"W:"+x.id===code), w=st&&st.workTime; if(w&&w.s&&w.e){ const a=hmN(w.s), e1=hmN(w.e); if(e1>a)return [a,e1]; } return null; } /* 時給の方の「勤務時間」（台帳で入力した時間） */ const t=(S.shiftTimes||{})[code]; if(t&&t.s&&t.e&&FSCOPE==="kitchen"){ const a=hmN(t.s), e0=hmN(t.e); if(e0>a)return [a,e0]; } const p=KIT_PATTERNS.find(x=>x[0]===code); const m=p&&/(\d+:\d+)〜(\d+:\d+)/.exec(p[1]); return m?[hmN(m[1]),hmN(m[2])]:null;}; // 勤務の時間（出勤人数・休業日設定で変えた時間があれば、それを使う）
+const kitRange=code=>{ if(typeof code==="string"&&code.startsWith("R:")){ const [a,b]=code.slice(2).split("-"); const x=hmN(a), y=hmN(b); return y>x?[x,y]:null; } if(code==="H:am")return [hmN("8:30"),hmN("12:30")]; if(code==="H:pm")return [hmN("13:30"),hmN("17:30")]; /* 半日の休みの日の、勤務する側 */ if(typeof code==="string"&&code.startsWith("W:")){ const st=S.staff.find(x=>"W:"+x.id===code), w=st&&st.workTime; if(w&&w.s&&w.e){ const a=hmN(w.s), e1=hmN(w.e); if(e1>a)return [a,e1]; } return null; } /* 時給の方の「勤務時間」（台帳で入力した時間） */ const t=(S.shiftTimes||{})[code]; if(t&&t.s&&t.e&&FSCOPE==="kitchen"){ const a=hmN(t.s), e0=hmN(t.e); if(e0>a)return [a,e0]; } const p=KIT_PATTERNS.find(x=>x[0]===code); const m=p&&/(\d+:\d+)〜(\d+:\d+)/.exec(p[1]); return m?[hmN(m[1]),hmN(m[2])]:null;}; // 勤務の時間（出勤人数・休業日設定で変えた時間があれば、それを使う）
 const kitTimeLabel=code=>{ const r=kitRange(code); const f=m=>Math.floor(m/60)+":"+String(m%60).padStart(2,"0"); return r?`${f(r[0])}〜${f(r[1])}`:""; };
 const kitWeekday=d=>!isSetOff(d); // 休業日は、人数を求めない
 const kitBandsDay=d=>kitBandsOf(dow(S.ym,d)===0?"sun":"wk"); // その日の時間帯ごとの人数（日曜は日曜の設定、ほかは月〜土曜の設定。祝日は関係なし）
@@ -1128,7 +1144,7 @@ const KIT_FULL=["早","日F","遅"], KIT_HALFPATS=["AM栄","PM栄"], KIT_CONTRAC
 const KIT_FULL_CHOICES=[["早|日F|遅","早・日・遅が可能"],["早|遅","早・遅が可能"],["早|日F","早・日が可能"],["日F|遅","日・遅が可能"],["早","早のみ可能"],["日F","日のみ可能"],["遅","遅のみ可能"]]; // 月給・契約：1つ選ぶ
 const kitName=c=>c==="日F"||(typeof c==="string"&&c.startsWith("W:"))?"日":c;
 const kitIsHourly=s=>!!(s&&/時給/.test((typeById(s.typeId)||{}).name||""));
-const kitHalfCode=(sid,d)=>{ const h=(S.rhalf[sid]||{})[d]; return h==="am"?"H:pm":h==="pm"?"H:am":null; }; // 半日の休み：勤務する側の時間（勤務時間設定一覧の常勤「AM休」8:30〜12:30／「PM休」13:30〜17:30）で数える。 // 午前休み＝午後に勤務（PM栄）、午後休み＝午前に勤務（AM栄）
+const kitHalfCode=(sid,d)=>{ const h=(S.rhalf[sid]||{})[d]; if(!h)return null; const t=(S.rtime[sid]||{})[d]; if(t&&t.s&&t.e)return "R:"+t.s+"-"+t.e; /* 右クリックで入れた、働く時間 */ return h==="am"?"H:pm":"H:am"; }; // 半日の休み：勤務する側の時間（勤務時間設定一覧の常勤「AM休」8:30〜12:30／「PM休」13:30〜17:30）で数える。 // 午前休み＝午後に勤務（PM栄）、午後休み＝午前に勤務（AM栄）
 const kitOptsOf=s=>{ const hr=kitIsHourly(s); return KIT_PATTERNS.filter(x=>!KIT_HALFPATS.includes(x[0])&&!KIT_CONTRACT.includes(x[0])&&(hr?!KIT_FULL.includes(x[0]):KIT_FULL.includes(x[0]))); }; // 時給：朝・朝日・早1・早2・遅1・遅2・日夜・夜。月給・契約：早・日・遅
 const kitPatsBase=s=>{ if(kitIsHourly(s)&&Array.isArray(s.kPats)&&s.kPats.length===0)return kitRange("W:"+s.id)?["W:"+s.id]:[]; /* 時給：チェックを全部外した状態。勤務時間が入っていれば、その時間（B6など）で入れる */ let a=Array.isArray(s&&s.kPats)?s.kPats:((s&&s.kPat)?[s.kPat]:[]); a=a.map(c=>(kitIsHourly(s)?({"早":"早1","遅":"遅2"}):({"朝栄":"早","遅栄":"遅","早1":"早","早2":"早","遅1":"遅","遅2":"遅"}))[c]||c); /* 時給の以前の「早」「遅」は、同じ時間の早1・遅2に */ const ok=kitOptsOf(s).map(x=>x[0]); a=ok.filter(c=>a.includes(c)); return a.length?a:(kitIsHourly(s)?(kitRange("W:"+s.id)?["W:"+s.id]:["早1"]):["日F"]); }; // 台帳で選んだ勤務（複数選べる。未選択は、時給が早1、月給・契約が日）
 const kitIsContract=s=>!!(s&&!kitIsHourly(s)&&typeName(s)==="契約");
@@ -1414,7 +1430,7 @@ function halfHourOpts(cur){ const c=snapHalfHour(cur); let o=`<option value=""${
 // その日だけの時間変更（と休憩の選択）を反映したスタッフ。記号の決定に使う
 const staffOfDay=(s,o)=>({...s,workTime:{s:(o&&o.s)||(s.workTime||{}).s||"",e:(o&&o.e)||(s.workTime||{}).e||""},breakYes:(o&&o.by!=null)?o.by:s.breakYes,breakLong:(o&&o.bl!=null)?o.bl:s.breakLong});
 // 訪問介護・看護の契約：公休の半日にしたマスを右クリック（長押し）して、働く時間を表示できる（数え方は、公休の半日のまま）
-const isHalfContract=(s,e)=>!!(s&&e&&e.hr&&typeName(s)==="契約"&&((EXP_F||FSCOPE)==="home"||(EXP_F||FSCOPE)==="nursing"));
+const isHalfContract=(s,e)=>{ if(!(s&&e&&e.hr))return false; const f=EXP_F||FSCOPE; if(f==="kitchen")return !kitIsHourly(s); return ["月給","契約"].includes(typeName(s))&&(f==="home"||f==="nursing"); }; // 公休・有休の半日に、働く時間を右クリックで入れられる人（訪問介護・看護と栄養士・厨房の、月給・契約）
 const baseTimeFor=(s,e)=>isHalfContract(s,e)?(e.hr==="am"?{s:"13:30",e:"17:30"}:{s:"08:30",e:"12:30"}):(s.workTime||{}); // 午前を休む日は午後（PM休）、午後を休む日は午前（AM休）の時間が通常
 function timeMark(s,d,e){ const o=(S.rtime[s.id]||{})[d]; if(!o||!e.work||!(hasOwnTime(s)||isHalfContract(s,e)))return"";
   const u=baseTimeFor(s,e), f=t=>t?t.replace(/^0/,""):"";
@@ -1423,12 +1439,13 @@ function timeMark(s,d,e){ const o=(S.rtime[s.id]||{})[d]; if(!o||!e.work||!(hasO
   const st=o.s||u.s, en=o.e||u.e; // 開始〜終了をそろえて表示（変更していない側は通常の時刻）
   const sym=(st&&en)?partSymbolOf(staffOfDay(s,o)):null; // 変更後の時間と休憩に合う記号（A6・B7・P4など）。休憩の選択が済んでいないときなどで決まらなければ、時間を出す
   if(sym)return `<span class="ps" style="font-size:${sym.length<=2?11:sym.length===3?10:sym.length<=5?9:5.5}px">${escapeHtml(sym)}</span>`;
-  return `<span class="tm" title="${f(st)}〜${f(en)}">${f(st)}<br>${f(en)}</span>`; } // 記号が決まらないときは、開始と終了を、2段で小さく出す
+  const paid=isHalfContract(s,e)&&isPaidSt(statusByCode(e.code)); // 有休の半日のときは、時間の下に「有」
+  return `<span class="tm" title="${f(st)}〜${f(en)}${paid?"（有休の半日）":""}">${f(st)}<br>${f(en)}${paid?`<br><b style="color:${escapeHtml((statusByCode(e.code)||{}).color||"#4A9E8F")}">有</b>`:""}</span>`; } // 記号が決まらないときは、開始と終了を、2段で小さく出す
 let timeEditCtx=null;
 function openTimeEdit(sid,day){
   const s=staffById(sid); if(!s)return;
   const e=effOf(memMd(),S.ym,sid,day,rmonthUsed());
-  if(!hasOwnTime(s)&&!isHalfContract(s,e)){toast("時間変更は、時給のスタッフと、公休の半日にした契約のスタッフ（訪問介護・看護）で使えます");return;}
+  if(!hasOwnTime(s)&&!isHalfContract(s,e)){toast("時間変更は、時給のスタッフと、公休・有休の半日にした月給・契約の人（訪問介護・看護、栄養士・厨房）で使えます");return;}
   if(!e.work){toast("出勤の日だけ設定できます");return;}
   const u=baseTimeFor(s,e), cur=(S.rtime[sid]||{})[day]||{s:u.s||"",e:u.e||""}, f=t=>t?t.replace(/^0/,""):"";
   timeEditCtx={sid,day}; $("#timeEditErr").textContent="";
@@ -1463,8 +1480,8 @@ function commitTimeEdit(clear){
     const x=hmToMin(a), y=hmToMin(b); let err="";
     if(x==null||y==null)err="開始と終了の時間を入れてください。";
     else if(y<=x)err="終了は、開始より後の時間にしてください。";
-    else if(y-x<240)err=`開始〜終了が4時間未満です（${fmtH((y-x)/60)}時間）。公休の半日の働く時間は、4時間にしてください。`;
-    else if(y-x>240)err=`開始〜終了が4時間を超えています（${fmtH((y-x)/60)}時間）。公休の半日の働く時間は、4時間にしてください。`;
+    else if(y-x<240)err=`開始〜終了が4時間未満です（${fmtH((y-x)/60)}時間）。半日の働く時間は、4時間にしてください。`;
+    else if(y-x>240)err=`開始〜終了が4時間を超えています（${fmtH((y-x)/60)}時間）。半日の働く時間は、4時間にしてください。`;
     if(err){ $("#timeEditErr").textContent=err; return; } }
   $("#timeEditErr").textContent="";
   pushUndo();
@@ -1933,8 +1950,22 @@ $("#btnPlanClose").onclick=()=>{ if(!S.plan)return;
   if(S.plan.closed){ if(ROLE!=="admin")return; showConfirm("実績の確定を解除します。よろしいですか？",()=>{ S.plan.closed=null; planSave(); renderRoster(); toast("実績確定を解除しました"); }); return; }
   showConfirm("この月を『実績』として確定します。確定後は、管理者が解除するまで、勤務表を変更できません。よろしいですか？",()=>{ S.plan.closed={at:new Date().toISOString(),by:USER_EMAIL||""}; planSave(); renderRoster(); toast("実績として確定しました"); }); };
 function renderOffBadge(){ const el=$("#offBadge"); if(!el)return; const n=monthOffOf(FSCOPE,S.ym); el.textContent=n==null?"公休：なし":`公休：${n}日`; }
+// 栄養士・厨房：勤務時間の早わかり表（勤務表の下。設定で変えた時間も反映）
+function renderKitGuide(){ const g=$("#kitGuide"); if(!g)return; if(FSCOPE!=="kitchen"){ g.hidden=true; g.innerHTML=""; return; } g.hidden=false;
+  const H0=5, H1=19, span=(H1-H0)*60, pct=m=>Math.max(0,Math.min(100,(m-H0*60)/span*100));
+  const ticks=Array.from({length:H1-H0+1},(_,i)=>H0+i);
+  const bandBg=kitBandsOf("wk").map(b=>`<span class="kg-band" style="left:${pct(hmN(b.s))}%;width:${pct(hmN(b.e))-pct(hmN(b.s))}%"></span>`).join("");
+  const row=c=>{ const r=kitRange(c); if(!r)return ""; const st=statusByCode(kitName(c))||{}, col=st.color||"#7A8580";
+    return `<div class="kg-row"><span class="kg-sym" style="background:${col}">${escapeHtml(kitName(c))}</span><span class="kg-time">${kitTimeLabel(c)}</span><span class="kg-track">${bandBg}<span class="kg-bar" style="left:${pct(r[0])}%;width:${pct(r[1])-pct(r[0])}%;background:${col}"></span></span></div>`; };
+  const grp=(t,codes)=>`<div class="kg-grp"><div class="kg-h">${t}</div>${codes.map(row).join("")}</div>`;
+  const axis=`<div class="kg-row kg-axis"><span class="kg-sym" style="visibility:hidden"></span><span class="kg-time"></span><span class="kg-track kg-ticks">${ticks.map(h=>`<span style="left:${pct(h*60)}%">${h}</span>`).join("")}</span></div>`;
+  g.innerHTML=`<div class="kg-cols"><div class="kg-col">${axis}${grp("月給・契約",KIT_FULL)}</div><div class="kg-col">${axis}${grp("時給",KIT_PATTERNS.map(x=>x[0]).filter(c=>!KIT_FULL.includes(c)&&!KIT_HALFPATS.includes(c)&&!KIT_CONTRACT.includes(c)))}</div></div><div class="kg-note">うすい色の帯は、人数をそろえる時間帯（${kitBandsOf("wk").map(b=>b.s+"〜"+b.e).join("・")}）です。時給の人の「日」は、台帳の勤務時間で入ります。</div>`; }
+function fitKitGuide(){ const g=$("#kitGuide"); if(!g||g.hidden)return; const tw=document.querySelector(".rtable-wrap"), t=$("#rosterTable"), rt=$("#rtotal"); if(!tw||!t)return; // 早わかり表の横幅を、上の勤務表（月の最後の日まで）にそろえる
+  const L=tw.getBoundingClientRect().left, R=Math.min(tw.getBoundingClientRect().right,t.getBoundingClientRect().right); // 右端は、月の最後の日の列にそろえる
+  g.style.width=Math.max(300,Math.round(R-L))+"px"; g.style.maxWidth="100%"; }
+window.addEventListener("resize",()=>{ if(FSCOPE==="kitchen")fitKitGuide(); });
 function renderRoster(){
-  renderOffBadge(); renderPlanBar();
+  renderOffBadge(); renderPlanBar(); renderKitGuide(); setTimeout(fitKitGuide,0);
   const nd=daysInMonth(S.ym),T=$("#rosterTable");
   const used=rmonthUsed(), md=memMd();
   const clsFor=d=>{const w=dow(S.ym,d);return isSetOff(d)?'off':((w===0||jpHoliday(S.ym,d))?'sun':w===6?'sat':'');}; // 祝日は日曜と同じ色
@@ -3290,8 +3321,8 @@ function kotTimes(f,s,code,half,tm,shiftTimes){
   const stt=statusByCode(code);
   const mk=(r,over,noBreak)=>{ if(!r)return {err:"勤務時間設定一覧に、記号がありません"}; const [bs,be]=noBreak?["",""]:kotSlot(r); const st=normHM(over&&over.s||r.s), en=normHM(over&&over.e||r.e); return {st,en,bs,be,pc:(st===normHM(r.s)&&en===normHM(r.e))?(r.pc||""):""}; }; // パターンコード：時間を変えた日は、パターンと時間が合わないため、空にする
   if(stt&&!stt.work){ // 休み。半日の休み（AM休＝午前を休む）は、勤務する側だけを出す
-    if(half==="am")return mk(kotRowOf("PM休",c=>c==="常勤"),(typeName(s)==="契約"&&tm&&tm.s&&tm.e)?tm:null,true);
-    if(half==="pm")return mk(kotRowOf("AM休",c=>c==="常勤"),(typeName(s)==="契約"&&tm&&tm.s&&tm.e)?tm:null,true);
+    if(half==="am")return mk(kotRowOf("PM休",c=>c==="常勤"),((["月給","契約"].includes(typeName(s))||f==="kitchen")&&tm&&tm.s&&tm.e)?tm:null,true);
+    if(half==="pm")return mk(kotRowOf("AM休",c=>c==="常勤"),((["月給","契約"].includes(typeName(s))||f==="kitchen")&&tm&&tm.s&&tm.e)?tm:null,true);
     return null; }
   if(f!=="kitchen"&&(code==="朝"||code==="夕"||code==="朝夕"))return mk(kotRowOf(code,c=>c==="ドライバー"));
   if(f==="day"&&s.job==="drv"&&["日","出"].includes(code)){ const sym=partSymbolOf(s); return sym?mk(kotRowOf(sym,c=>c==="ドライバー")):{err:"ドライバーの勤務時間帯（朝夕・朝のみ・夕のみ）が未設定です"}; } // ドライバー：台帳で選んだ朝夕・朝のみ・夕のみ
