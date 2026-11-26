@@ -867,12 +867,14 @@
 <div class="overlay" id="staffOverlay"><div class="modal" id="staffModal">
   <div class="modal-head"><h3>スタッフ台帳</h3><button class="x" data-close>×</button></div>
   <div class="modal-body">
-    <div class="seg" id="stView" style="margin-bottom:12px"><button class="segbtn" data-v="one" aria-pressed="true">個人設定（この部署）</button><button class="segbtn" data-v="all" aria-pressed="false">全部署の一覧</button></div>
+    <div class="seg" id="stView" style="margin-bottom:12px"><button class="segbtn" data-v="one" aria-pressed="true">個人設定（この部署）</button><button class="segbtn" data-v="sum" aria-pressed="false">部署のまとめ</button><button class="segbtn" data-v="all" id="stViewAll" aria-pressed="false">全部署の一覧</button></div>
+    <div id="stReadNote" hidden style="font-size:12px;color:var(--ink-soft);margin:-4px 0 10px">閲覧のみです（変更は管理者が行います）</div>
     <div id="stOne">
     <div class="mlabel">名前・色／職種／雇用形態（契約・時給は勤務できる曜日。時給は勤務時間も）</div>
     <div class="edit-list" id="staffList"></div>
     <div class="edit-row"><input type="text" id="newStaffName" placeholder="スタッフ名を追加" maxlength="12"><button class="btn sm" id="addStaff">＋ 追加</button></div>
     </div>
+    <div id="stSum" hidden></div>
     <div id="stAll" hidden>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <select id="asDept" style="font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)"></select>
@@ -2052,7 +2054,7 @@ function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>
 /* ================= editors ================= */
 const isLockedStaff=s=>s.locked!==false; // 保存済み（登録済み）のスタッフは、「編集」を押すまで変更できない。新しく追加したスタッフは、保存するまで編集できる
 function renderStaffList(){
-  const w=$("#staffList");w.innerHTML=""; if(sortStaffByJob())saveStaff();
+  const w=$("#staffList");w.innerHTML=""; if(sortStaffByJob()&&ROLE==="admin")saveStaff();
   if(FSCOPE==="test"&&ROLE==="admin"){ // テスト部署：KOT連携テスト用の架空の5名を、ボタン1つで入れる（同じ名前の人がいれば入れない）
     const tb=document.createElement('div'); tb.style.cssText="margin-bottom:10px"; tb.innerHTML=`<button class="btn sm" type="button">🧪 テスト用の5名を入れる</button><span style="font-size:12px;color:var(--ink-soft);margin-left:8px">月給1名・契約1名・時給3名（架空の人物）</span>`;
     tb.querySelector('button').onclick=()=>{ const T=n=>(S.types.find(t=>t.name===n)||{}).id; const all=[0,1,2,3,4,5,6];
@@ -2182,8 +2184,10 @@ function renderStaffList(){
     },"削除する");};
     card.querySelector('.lock-btn').onclick=()=>{ s.locked=!isLockedStaff(s); saveStaff(); renderStaffList(); toast(s.locked?`${s.name||"スタッフ"} を保存しました（変更するときは「編集」）`:`${s.name||"スタッフ"} を編集できます`); };
     if(isLockedStaff(s)){ card.classList.add("locked"); card.querySelectorAll("input,select,button").forEach(el=>{ if(!el.classList.contains("lock-btn"))el.disabled=true; }); } // 保存済みは、画面上で変更できない
+    if(ROLE!=="admin"){ card.querySelectorAll("input,select,button,textarea").forEach(el=>{el.disabled=true;}); card.querySelectorAll(".lock-btn,.del,.mv-up,.mv-dn").forEach(el=>el.hidden=true); } // 管理者以外は閲覧のみ
     w.appendChild(card);
   });
+  const ar=$("#newStaffName")&&$("#newStaffName").closest(".edit-row"); if(ar)ar.hidden=ROLE!=="admin";
 }
 function addStaffMaster(){
   const n=$("#newStaffName").value.trim();if(!n)return;
@@ -2520,6 +2524,39 @@ document.addEventListener("keydown",e=>{ if(!ROLE||S.tab!=="roster"||modalStack.
     cellSel.forEach(k=>{ const [sid,d]=k.split("|"); const day=+d; if(S.roster[sid]&&S.roster[sid][day]!==undefined){ delete S.roster[sid][day]; n++; } if(S.rhalf[sid])delete S.rhalf[sid][day]; if(S.rtime[sid])delete S.rtime[sid][day]; setAuto(sid,day,false); });
     const cnt=cellSel.size; cellSel=new Set(); selAnchor=null; saveRoster(); renderRoster(); toast(`${cnt}マスを消しました（元に戻すこともできます）`); } });
 
+// ---- コピー（⌘/Ctrl＋C）・貼り付け（⌘/Ctrl＋V）：選んだマスをまとめて写す ----
+let cellClip=null; // {text, cells:[{dr,dd,code,half,time}]}
+const rosterRows=()=>[...document.querySelectorAll("#rosterTable tbody tr")].filter(tr=>tr.querySelector("td.rc"));
+const clipKeyOk=e=>{ if(!ROLE||S.tab!=="roster"||modalStack.length)return false; const t=document.activeElement, tag=(t&&t.tagName)||""; return !(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"||(t&&t.isContentEditable)); };
+function selBox(){ const rows=rosterRows(), pos=[]; rows.forEach((tr,r)=>tr.querySelectorAll("td.rc").forEach(td=>{ if(cellSel.has(td.dataset.sid+"|"+td.dataset.day))pos.push({r,d:+td.dataset.day,sid:td.dataset.sid}); }));
+  if(!pos.length)return null; return {pos,r1:Math.min(...pos.map(p=>p.r)),d1:Math.min(...pos.map(p=>p.d)),r2:Math.max(...pos.map(p=>p.r)),d2:Math.max(...pos.map(p=>p.d)),rows}; }
+document.addEventListener("copy",e=>{ if(!clipKeyOk()||!cellSel.size)return; const b=selBox(); if(!b)return;
+  const cells=b.pos.map(p=>({dr:p.r-b.r1,dd:p.d-b.d1,code:(S.roster[p.sid]||{})[p.d]||"",half:(S.rhalf[p.sid]||{})[p.d]||null,time:(S.rtime[p.sid]||{})[p.d]||null}));
+  const lines=[]; for(let r=0;r<=b.r2-b.r1;r++){ const ln=[]; for(let d=0;d<=b.d2-b.d1;d++){ const c=cells.find(x=>x.dr===r&&x.dd===d); ln.push(c?c.code:""); } lines.push(ln.join("\t")); }
+  const text=lines.join("\n"); cellClip={text,cells,h:b.r2-b.r1+1,w:b.d2-b.d1+1};
+  e.clipboardData.setData("text/plain",text); e.preventDefault(); toast(`${cells.length}マスをコピーしました（貼り付けたい先頭のマスを選んで ⌘＋V）`); });
+document.addEventListener("paste",e=>{ if(!clipKeyOk()||!cellSel.size)return; const b=selBox(); if(!b)return; e.preventDefault();
+  if(planClosed()){ toast("この月は実績確定済みです。変更するには、管理者が解除してください"); return; }
+  const text=(e.clipboardData&&e.clipboardData.getData("text/plain"))||"";
+  let cells;
+  if(cellClip&&text.replace(/\r/g,"")===cellClip.text)cells=cellClip.cells; // このアプリでコピーしたもの（半日・時間変更も写す）
+  else { if(!text.trim()){toast("貼り付けるものがありません");return;} // Excelなどからの文字：勤務記号として読む
+    cells=[]; text.replace(/\r/g,"").replace(/\n$/,"").split("\n").forEach((ln,r)=>ln.split("\t").forEach((v,d)=>{ v=v.trim(); cells.push({dr:r,dd:d,code:v,half:null,time:null}); }));
+    const bad=[...new Set(cells.map(c=>c.code).filter(c=>c&&!statusByCode(c)&&c!=="応"&&!DRV_SYMS.some(x=>x.code===c)))]; if(bad.length){toast(`勤務記号にないものがあります：${bad.slice(0,5).join("・")}`);return;} }
+  // 1マスだけコピーして、たくさんのマスを選んでいるとき：選んだマス全部に入れる。それ以外：選んだ範囲の左上から写す
+  const targets=[]; const one=cells.length===1;
+  if(one) b.pos.forEach(p=>targets.push({sid:p.sid,d:p.d,c:cells[0]}));
+  else { const nd=daysInMonth(S.ym); cells.forEach(c=>{ const tr=b.rows[b.r1+c.dr], d=b.d1+c.dd; if(!tr||d>nd)return; const td=tr.querySelector(`td.rc[data-day="${d}"]`); if(td)targets.push({sid:td.dataset.sid,d,c}); }); }
+  if(!targets.length){toast("貼り付けられるマスがありません");return;}
+  pushUndo(); const nsel=new Set();
+  targets.forEach(({sid,d,c})=>{ if(!S.roster[sid])S.roster[sid]={}; if(!S.rhalf[sid])S.rhalf[sid]={};
+    const stf=staffById(sid), noHalf=!!(stf&&(FSCOPE==="kitchen"?kitIsHourly(stf):(isPartTimeType(typeById(stf.typeId))&&!((FSCOPE==="home"||FSCOPE==="nursing")&&typeName(stf)==="契約"))));
+    if(c.code)S.roster[sid][d]=c.code; else delete S.roster[sid][d];
+    if(c.half&&!noHalf)S.rhalf[sid][d]=c.half; else delete S.rhalf[sid][d];
+    if(c.time&&c.code){ if(!S.rtime[sid])S.rtime[sid]={}; S.rtime[sid][d]={...c.time}; } else if(S.rtime[sid])delete S.rtime[sid][d];
+    setAuto(sid,d,false); nsel.add(sid+"|"+d); });
+  saveRoster(); renderRoster(); cellSel=nsel; applyCellSel(); toast(`${targets.length}マスに貼り付けました（元に戻すこともできます）`); });
+
 // ---- 休日数に合わせて自動作成 ----
 function openAuto(){
   const lines=S.staff.map(s=>{const off=offCount(s.id),tgt=staffTarget(s);const need=tgt==null?0:tgt-off;
@@ -2736,7 +2773,7 @@ $("#doAuto").onclick=()=>{
   if(warn.length)parts.push(`休日数が目標未達 → ${warn.join("、")}`);
   toast(parts.length?`作成しました｜要確認：${parts.join(" ／ ")}`:"休日数に合わせて作成しました");
 };
-$("#btnStaffMgr").onclick=$("#stgStaff").onclick=()=>{ if(ROLE!=="admin"){toast("スタッフ台帳は、管理者のみ変更できます");return;} setStaffView("one");openModal("#staffOverlay");};
+$("#btnStaffMgr").onclick=$("#stgStaff").onclick=()=>{ if(!ROLE)return; setStaffView("one");openModal("#staffOverlay");}; // 管理者以外は、この部署の分を閲覧のみ
 $("#btnTplSave").onclick=openTplSave;$("#btnTplLoad").onclick=openTplLoad;
 $("#btnPrintBoard").onclick=$("#btnPrintRoster").onclick=()=>window.print();
 
@@ -2951,7 +2988,7 @@ function updateFacilityUI(){
   $("#facSwitch").hidden=!isAdmin;
   $("#facBadge").hidden=isAdmin;
   $("#btnPrintAll").hidden=!isAdmin; $("#btnKotSide").hidden=!isAdmin;
-  $("#btnStaffMgr").hidden=!isAdmin; $("#stgStaff").hidden=!isAdmin; // スタッフ台帳の編集は管理者のみ
+  $("#btnStaffMgr").hidden=false; $("#btnStaffMgr").textContent=isAdmin?"スタッフ台帳を編集":"スタッフ台帳を見る"; $("#stgStaff").hidden=!isAdmin; // 管理者以外は閲覧のみ（全部署の一覧は見られない）
   if(isAdmin){
     const sel=$("#facSwitchSel");
     if(!sel.dataset.built){
@@ -3093,13 +3130,57 @@ function renderAllStaff(){
     tr.querySelector(".as-open").onclick=async()=>{ if(f!==FSCOPE){ const fs=$("#facSwitchSel"); fs.value=f; await fs.onchange({target:fs}); } setStaffView("one"); };
   });
 }
-function setStaffView(v){ // 個人設定（この部署）／全部署の一覧 の切り替え
-  $("#stOne").hidden=v!=="one"; $("#stAll").hidden=v!=="all";
+function setStaffView(v){ // 個人設定（この部署）／部署のまとめ／全部署の一覧 の切り替え
+  const adm=ROLE==="admin"; if(v==="all"&&!adm)v="one"; // 全部署の一覧は、管理者のみ
+  $("#stViewAll").hidden=!adm; $("#stReadNote").hidden=adm;
+  $("#stOne").hidden=v!=="one"; $("#stSum").hidden=v!=="sum"; $("#stAll").hidden=v!=="all";
   $$("#stView .segbtn").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===v)));
-  $("#staffModal").style.width=v==="all"?"min(1040px,100%)":"";
-  if(v==="all")renderAllStaff(); else renderStaffList();
+  $("#staffModal").style.width=(v==="all"||v==="sum")?"min(1040px,100%)":"";
+  if(v==="all")renderAllStaff(); else if(v==="sum")renderStaffSum(); else renderStaffList();
 }
 $$("#stView .segbtn").forEach(b=>b.onclick=()=>setStaffView(b.dataset.v));
+// ---- 部署のまとめ：この部署のスタッフの契約内容を一覧にし、人数を数える（閲覧のみ） ----
+function renderStaffSum(){
+  const box=$("#stSum"), list=S.staff.slice(), night=nightDeptOn(), hasHome=(FSCOPE==="home"||FSCOPE==="nursing");
+  const jobName=s=>jobIdsOf(s).map(id=>(jobsOf().find(j=>j.id===id)||{}).name).filter(Boolean).join("・");
+  const modeName=s=>(SHIFT_MODES.find(([v])=>v===shiftModeOf(s))||[,""])[1];
+  const daysOf=s=>{ if(!holidaySetOn(s))return "全日"; const wd=Array.isArray(s.workDays)?s.workDays:[0,1,2,3,4,5,6]; return wd.slice().sort((a,b)=>a-b).map(d=>DOW[d]).join("")+(holidayOkOf(s)?"・祝":""); };
+  const canDay=(s,d)=>!holidaySetOn(s)||!Array.isArray(s.workDays)||s.workDays.includes(d);
+  const startOf=s=>{ if(hasOwnTime(s))return workTimeLabel(s).replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim()||"未設定"; if(!hasHome)return "－"; if(typeName(s)==="契約")return s.dayStart==="08:30"?"8:30":s.dayStart==="09:00"?"9:00":"未設定"; return s.dayStart==="09:00"?"9:00":"8:30"; };
+  const cnt=(arr,f)=>{ const m=new Map(); arr.forEach(x=>{ const k=f(x); if(k)m.set(k,(m.get(k)||0)+1); }); return [...m]; };
+  const chip=(l,n)=>`<span style="display:inline-flex;gap:6px;align-items:baseline;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:13px">${escapeHtml(l)}<b style="font-variant-numeric:tabular-nums">${n}</b>人</span>`;
+  const grp=(t,items)=>items.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px"><span style="font-size:12px;color:var(--ink-soft);font-weight:700;min-width:84px">${t}</span>${items.map(([l,n])=>chip(l,n)).join("")}</div>`:"";
+  let head=`<div style="font-size:13px;font-weight:700;margin-bottom:10px">${FACILITY_ICON[FSCOPE]||""} ${escapeHtml(FACILITY_NAME[FSCOPE]||"")}：${list.length}人</div>`;
+  head+=grp("雇用形態",cnt(list,s=>typeName(s)));
+  if(jobsOf().length)head+=grp("職種",cnt(list.flatMap(s=>jobIdsOf(s).map(id=>({id}))),x=>(jobsOf().find(j=>j.id===x.id)||{}).name));
+  if(night){ head+=grp("入れる勤務",[["早番",list.filter(s=>canEarlyOf(s)).length],["遅番",list.filter(s=>canLateOf(s)).length],["夜勤",list.filter(s=>s.canNight||s.nightOnly).length]].filter(x=>x[1])); }
+  const dowRow=[1,2,3,4,5,6,0].map(d=>`<td style="padding:4px 8px;text-align:center;font-variant-numeric:tabular-nums">${list.filter(s=>canDay(s,d)).length}</td>`).join("");
+  head+=`<div style="overflow-x:auto;margin:4px 0 14px"><table style="border-collapse:collapse;font-size:13px"><tr style="color:var(--ink-soft);font-size:12px"><td style="padding:4px 8px">曜日</td>${[1,2,3,4,5,6,0].map(d=>`<td style="padding:4px 8px;text-align:center">${DOW[d]}</td>`).join("")}</tr><tr style="border-top:1px solid var(--line)"><td style="padding:4px 8px;font-size:12px;color:var(--ink-soft)">勤務できる人数</td>${dowRow}</tr></table></div>`;
+  const cols=[["名前",s=>escapeHtml(s.name||"")],["雇用形態",s=>escapeHtml(typeName(s))]];
+  if(jobsOf().length)cols.push(["職種",s=>escapeHtml(jobName(s))||'<span style="color:var(--ink-soft)">未設定</span>']);
+  if(night)cols.push(["勤務の入り方",s=>escapeHtml(modeName(s))]);
+  cols.push(["勤務できる曜日",s=>escapeHtml(daysOf(s))]);
+  cols.push([hasHome?"日勤の開始／勤務時間":"勤務時間",s=>escapeHtml(startOf(s))]);
+  if(night)cols.push(["月の夜勤回数",s=>(s.canNight||s.nightOnly)?(s.nightCount==null?"指定なし":s.nightCount+"回"):"－"]);
+  if(list.some(s=>typeName(s)==="時給"))cols.push(["月の出勤日数",s=>typeName(s)==="時給"?(s.monthDays==null?"指定なし":s.monthDays+"日"):"－"]);
+  const th=l=>`<th style="padding:6px 8px;text-align:left;font-weight:700;white-space:nowrap">${l}</th>`;
+  const body=list.map(s=>`<tr style="border-top:1px solid var(--line)">${cols.map(([,f],i)=>`<td style="padding:6px 8px;white-space:nowrap${i===0?";font-weight:700":""}"><span${i===0?` style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${escapeHtml(s.color||"#999")};margin-right:6px"`:' hidden'}></span>${f(s)}</td>`).join("")}</tr>`).join("");
+  head=`<div class="no-print" style="display:flex;justify-content:flex-end;margin-bottom:6px"><button class="btn sm" type="button" id="stSumPrint">🖨 印刷・PDF</button></div><div id="stSumBody">`+head;
+  box.innerHTML=head+(list.length?`<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:13px;width:100%"><thead><tr style="color:var(--ink-soft);font-size:12px">${cols.map(([l])=>th(l)).join("")}</tr></thead><tbody>${body}</tbody></table></div>`:'<p style="color:var(--ink-soft)">この部署には、まだスタッフがいません</p>')+`</div>`;
+  $("#stSumPrint").onclick=()=>printStaffSum();
+}
+function printStaffSum(){ // 部署のまとめを、別の画面で開いて印刷（PDFに保存もできる）
+  const d=new Date(), ds=`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`, title=`スタッフ台帳 部署のまとめ（${FACILITY_NAME[FSCOPE]||""}）`;
+  const w=window.open("","_blank"); if(!w){toast("印刷用の画面を開けませんでした（ポップアップを許可してください）");return;}
+  w.document.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
+    :root{--ink:#1f2a27;--ink-soft:#5b6763;--line:#cfd6d3;--surface:#fff}
+    body{font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;color:var(--ink);background:#fff;margin:24px}
+    h1{font-size:16px;margin:0 0 4px} .date{font-size:11px;color:var(--ink-soft);margin-bottom:14px}
+    table{page-break-inside:auto} tr{page-break-inside:avoid} div[style*="overflow-x"]{overflow:visible!important}
+    @page{size:A4 landscape;margin:12mm}
+  </style></head><body><h1>${escapeHtml(title)}</h1><div class="date">${ds} 時点</div>${$("#stSumBody").innerHTML}</body></html>`);
+  w.document.close(); w.focus(); setTimeout(()=>w.print(),300); }
+
 
 // ---- 管理者：勤務時間設定一覧（記号ごとの開始・終了・休憩・実働。全部署で共通の控え。まだ他の画面とは連動しない） ----
 const SHIFTTBL_KEY="yakuwari:shifttable";
